@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+/* Configuration des polices et styles de base pour le thème sombre */
+@layer base {
+  body {
+    @apply bg-[#020617] text-slate-200 antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Custom Utilities pour ton Store */
+@layer utilities {
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+  
+  .game-card-shadow {
+    @apply shadow-[0_0_50px_-12px_rgba(79,70,229,0.2)];
+  }
+}
