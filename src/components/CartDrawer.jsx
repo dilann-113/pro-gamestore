@@ -6,8 +6,13 @@ import Swal from 'sweetalert2';
 export default function CartDrawer({ cart, setCart, user, onClose }) {
   const [loading, setLoading] = useState(false);
 
-  // Calcul du total avec formatage sécurisé pour éviter le NaN
-  const total = cart.reduce((sum, item) => sum + (Number(item.price || 0) * item.quantity), 0);
+  // Fonction pour extraire le nombre du prix (ex: "44255 FCFA" -> 44255)
+  const parsePrice = (price) => Number(String(price).replace(/[^0-9]/g, '')) || 0;
+
+  // Calcul du total
+  const total = cart.reduce((sum, item) => {
+    return sum + (parsePrice(item.price) * (Number(item.quantity) || 1));
+  }, 0);
 
   const updateQuantity = (id, delta) => {
     setCart(prev => prev.map(item => 
@@ -33,7 +38,6 @@ export default function CartDrawer({ cart, setCart, user, onClose }) {
     setLoading(true);
 
     try {
-      // 1. Enregistrement de la commande dans Supabase
       const { supabase } = await import('../supabaseClient');
       const { error } = await supabase
         .from('orders')
@@ -47,10 +51,7 @@ export default function CartDrawer({ cart, setCart, user, onClose }) {
 
       if (error) throw new Error("Erreur BDD : " + error.message);
 
-      // 2. Appel de la Edge Function (Confirmé par image_791c31.png)
-      // On utilise le nom 'quick-worker'
       const functionUrl = 'https://onfybrqtufwwdambnwhm.supabase.co/functions/v1/quick-worker';
-
       const mailRes = await fetch(functionUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -63,15 +64,14 @@ export default function CartDrawer({ cart, setCart, user, onClose }) {
       });
 
       if (!mailRes.ok) {
-        console.warn("La commande est enregistrée, mais l'email n'a pas pu être envoyé.");
+        console.warn("Commande enregistrée, mais email non envoyé.");
       }
 
-      // 3. Finalisation réussie
       setCart([]);
       onClose();
       Swal.fire({
         title: 'Paiement validé !',
-        text: `Merci Dilann ! Ta commande est enregistrée et un mail arrive sur ${user.email}`,
+        text: `Ta commande est enregistrée ! Un mail arrive sur ${user.email}`,
         icon: 'success',
         background: '#020617',
         color: '#fff',
@@ -96,7 +96,6 @@ export default function CartDrawer({ cart, setCart, user, onClose }) {
     <div className="fixed inset-0 z-[100] flex justify-end bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-md bg-[#020617] h-full shadow-2xl flex flex-col border-l border-white/10 text-white">
         
-        {/* Header Style Premium Dark */}
         <div className="p-6 border-b border-white/5 flex justify-between items-center">
           <h2 className="text-xl font-black italic uppercase tracking-tighter text-white">
             Mon <span className="text-indigo-500">Panier</span>
@@ -104,7 +103,6 @@ export default function CartDrawer({ cart, setCart, user, onClose }) {
           <button onClick={onClose} className="text-slate-400 hover:text-white"><X /></button>
         </div>
 
-        {/* Liste des jeux */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {cart.map((item) => (
             <div key={item.id} className="bg-white/5 border border-white/5 rounded-3xl p-4 flex items-center gap-4">
@@ -113,7 +111,9 @@ export default function CartDrawer({ cart, setCart, user, onClose }) {
               </div>
               <div className="flex-1">
                 <h3 className="text-sm font-bold text-white truncate">{item.title}</h3>
-                <p className="text-indigo-400 text-xs font-black">{Number(item.price || 0).toLocaleString()} FCFA</p>
+                <p className="text-indigo-400 text-xs font-black">
+                  {parsePrice(item.price).toLocaleString()} FCFA
+                </p>
               </div>
               <div className="flex items-center gap-2 bg-black/20 rounded-xl p-1">
                 <button onClick={() => updateQuantity(item.id, -1)} className="p-1 hover:text-indigo-400"><Minus size={14}/></button>
@@ -125,7 +125,6 @@ export default function CartDrawer({ cart, setCart, user, onClose }) {
           ))}
         </div>
 
-        {/* Footer avec Total et Paiement */}
         <div className="p-6 border-t border-white/5 bg-white/[0.02]">
           <div className="flex justify-between items-end mb-6">
             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Total</span>
