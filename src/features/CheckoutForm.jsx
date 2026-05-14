@@ -15,7 +15,7 @@ const CheckoutForm = ({ cartItems, totalAmount, onCancel, onSuccess }) => {
     setLoading(true);
 
     try {
-      // 1. Enregistrement de la commande dans la table 'orders' de Supabase
+      // 1. Enregistrement de la commande dans Supabase (Table 'orders')
       const { error: dbError } = await supabase
         .from('orders')
         .insert([
@@ -29,10 +29,10 @@ const CheckoutForm = ({ cartItems, totalAmount, onCancel, onSuccess }) => {
           }
         ]);
 
-      if (dbError) throw new Error("Erreur de base de données : " + dbError.message);
+      if (dbError) throw new Error("Erreur BDD : " + dbError.message);
 
-      // 2. Appel de la Edge Function pour l'envoi du mail (Resend)
-      // Remplace bien par ton URL exacte si elle a changé
+      // 2. Appel de la Edge Function pour l'envoi du mail de confirmation
+      // L'URL utilise l'identifiant de ton projet et le nom de ta fonction (ex: quick-worker)
       const functionUrl = "https://onfybrqtufwwdambnwhm.supabase.co/functions/v1/quick-worker";
 
       const mailRes = await fetch(functionUrl, {
@@ -41,22 +41,22 @@ const CheckoutForm = ({ cartItems, totalAmount, onCancel, onSuccess }) => {
         body: JSON.stringify({
           email: formData.email,
           username: formData.nom,
-          total: totalAmount,
+          total: `${Number(totalAmount).toLocaleString()} FCFA`,
           items: cartItems
         })
       });
 
       if (!mailRes.ok) {
-        console.warn("La commande est enregistrée, mais le mail n'a pas pu être envoyé.");
+        console.warn("La commande est enregistrée, mais l'envoi du mail a échoué.");
       }
 
-      // 3. Succès final
-      alert("Paiement validé ! Votre commande est enregistrée et un mail de confirmation vous a été envoyé.");
+      // 3. Notification de succès et réinitialisation
+      alert("Félicitations ! Votre commande a été validée et un e-mail de confirmation vous a été envoyé.");
       onSuccess(); 
 
     } catch (error) {
-      console.error("Erreur lors de la transaction:", error.message);
-      alert("Erreur : " + error.message);
+      console.error("Erreur transactionnelle:", error.message);
+      alert("Une erreur est survenue : " + error.message);
     } finally {
       setLoading(false);
     }
@@ -64,6 +64,7 @@ const CheckoutForm = ({ cartItems, totalAmount, onCancel, onSuccess }) => {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-[110]">
+      {/* Container avec style Glassmorphism Dark */}
       <div className="bg-[#121212]/90 border border-white/10 backdrop-blur-xl rounded-2xl p-8 max-w-md w-full shadow-2xl text-white">
         <h2 className="text-2xl font-bold mb-6 bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
           Finaliser la commande
@@ -71,7 +72,7 @@ const CheckoutForm = ({ cartItems, totalAmount, onCancel, onSuccess }) => {
         
         <form onSubmit={handleFormSubmit} className="space-y-5">
           <div>
-            <label className="block text-xs font-uppercase tracking-wider text-gray-400 mb-2">NOM COMPLET</label>
+            <label className="block text-xs font-uppercase tracking-wider text-gray-400 mb-2 font-bold">NOM COMPLET</label>
             <input 
               type="text"
               required
@@ -83,7 +84,7 @@ const CheckoutForm = ({ cartItems, totalAmount, onCancel, onSuccess }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-uppercase tracking-wider text-gray-400 mb-2">ADRESSE EMAIL</label>
+            <label className="block text-xs font-uppercase tracking-wider text-gray-400 mb-2 font-bold">ADRESSE EMAIL</label>
             <input 
               type="email"
               required
@@ -95,12 +96,12 @@ const CheckoutForm = ({ cartItems, totalAmount, onCancel, onSuccess }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-uppercase tracking-wider text-gray-400 mb-2">ADRESSE DE LIVRAISON</label>
+            <label className="block text-xs font-uppercase tracking-wider text-gray-400 mb-2 font-bold">ADRESSE DE LIVRAISON</label>
             <textarea 
               required
               rows="3"
               className="w-full p-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all placeholder:text-gray-600 resize-none text-white"
-              placeholder="Adresse complète au Gabon..."
+              placeholder="Votre adresse précise au Gabon..."
               value={formData.adresse}
               onChange={(e) => setFormData({...formData, adresse: e.target.value})}
             />
@@ -120,7 +121,7 @@ const CheckoutForm = ({ cartItems, totalAmount, onCancel, onSuccess }) => {
               disabled={loading}
               className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-lg shadow-blue-500/20 transition-all text-sm font-bold uppercase tracking-widest disabled:opacity-50"
             >
-              {loading ? 'TRAITEMENT...' : `PAYER ${totalAmount}`}
+              {loading ? 'TRAITEMENT...' : `PAYER ${Number(totalAmount).toLocaleString()} FCFA`}
             </button>
           </div>
         </form>
