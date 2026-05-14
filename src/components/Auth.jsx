@@ -3,6 +3,9 @@ import { Gamepad2, Mail, Lock, User, ArrowRight, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Swal from 'sweetalert2';
 
+// 1. IMPORTATION DU CLIENT SUPABASE
+import { supabase } from '../supabaseClient';
+
 export default function Auth({ onLoginSuccess }) {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -21,54 +24,56 @@ export default function Auth({ onLoginSuccess }) {
     e.preventDefault();
     setLoading(true);
 
-    const endpoint = isLogin ? 'login.php' : 'register.php';
-    // Utilisation de l'URL absolue pour éviter l'erreur 500 de chemin
-    const apiUrl = `http://localhost/api_chiro/${endpoint}`;
-
     try {
-      console.log("Envoi vers :", apiUrl);
-      
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      });
+      if (isLogin) {
+        // --- LOGIQUE DE CONNEXION SUPABASE ---
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        });
 
-      // Si le serveur renvoie une erreur 500, on lit le texte pour comprendre
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Erreur Serveur (500) :", errorText);
-        throw new Error(`Erreur ${response.status}: Le serveur a planté.`);
-      }
+        if (error) throw error;
 
-      const data = await response.json();
+        toast.success(`Content de vous revoir !`);
+        // On passe les infos utilisateur au composant parent
+        onLoginSuccess({
+          id: data.user.id,
+          email: data.user.email,
+          username: data.user.user_metadata.username || formData.email.split('@')[0]
+        });
 
-      if (data.success) {
-        if (isLogin) {
-          toast.success(`Content de vous revoir !`);
-          onLoginSuccess(data.user);
-        } else {
-          Swal.fire({
-            title: 'Inscription réussie !',
-            text: `Vérifie ta boîte mail : ${formData.email}`,
-            icon: 'success',
-            background: '#0f172a',
-            color: '#f8fafc',
-            confirmButtonColor: '#6366f1'
-          }).then(() => setIsLogin(true));
-        }
       } else {
-        toast.error(data.message || "Erreur lors de l'opération");
+        // --- LOGIQUE D'INSCRIPTION SUPABASE ---
+        const { data, error } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+          options: {
+            data: {
+              username: formData.username,
+            }
+          }
+        });
+
+        if (error) throw error;
+
+        Swal.fire({
+          title: 'Inscription réussie !',
+          text: `Vérifie ta boîte mail pour confirmer ton compte : ${formData.email}`,
+          icon: 'success',
+          background: '#0f172a',
+          color: '#f8fafc',
+          confirmButtonColor: '#6366f1'
+        }).then(() => setIsLogin(true));
       }
     } catch (err) {
-      console.error("Détails de l'erreur :", err);
-      // Alerte spécifique pour l'erreur 500 vue sur image_e8865b.png
+      console.error("Erreur Auth :", err.message);
+      
+      // Alerte personnalisée pour remplacer l'erreur 500 PHP
       Swal.fire({
-        title: 'Erreur Serveur 500',
-        text: "Le PHP a planté. Vérifie que le dossier 'vendor' est bien dans htdocs/api_chiro/ et que MySQL est lancé.",
+        title: 'Erreur Authentification',
+        text: err.message === "Failed to fetch" 
+          ? "Impossible de contacter Supabase. Vérifie ta connexion internet." 
+          : err.message,
         icon: 'error',
         background: '#1e293b',
         color: '#fff'
@@ -89,7 +94,7 @@ export default function Auth({ onLoginSuccess }) {
             Pro<span className="text-indigo-500">Store</span>
           </h1>
           <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-2">
-            {isLogin ? 'Authentification' : 'Création de compte'}
+            {isLogin ? 'Authentification Cloud' : 'Création de compte Cloud'}
           </p>
         </div>
 
@@ -141,7 +146,7 @@ export default function Auth({ onLoginSuccess }) {
             onClick={() => setIsLogin(!isLogin)}
             className="text-slate-500 text-[10px] font-black uppercase tracking-widest hover:text-indigo-400 transition-colors"
           >
-            {isLogin ? "Nouveau ? Créer un compte" : "Déjà inscrit ? Se connecter"}
+            {isLogin ? "Besoin d'un compte ? S'inscrire" : "Déjà un compte ? Se connecter"}
           </button>
         </div>
       </div>

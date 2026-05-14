@@ -1,3 +1,5 @@
+// src/data/games.js
+
 export const GAMES_DATA = [
   {
     id: 1,
