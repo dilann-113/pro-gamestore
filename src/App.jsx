@@ -13,6 +13,9 @@ import CartDrawer from "./components/CartDrawer";
 import GameDetails from "./components/GameDetails";
 import Auth from "./components/Auth";
 
+// 🛠️ ÉTAPE 1 : Importation du tableau de bord Admin
+import AdminDashboard from './admin/AdminDashboard';
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
@@ -105,6 +108,11 @@ export default function App() {
       return matchesSearch && matchesCategory;
     });
   }, [searchTerm, activeCategory, games]);
+
+  // 🛠️ ÉTAPE 2 : Intercepter l'URL pour charger l'Admin avant l'Auth
+  if (window.location.pathname === '/admin') {
+    return <AdminDashboard />;
+  }
 
   if (!isAuthenticated) {
     return (
