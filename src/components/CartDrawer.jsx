@@ -51,10 +51,15 @@ export default function CartDrawer({ cart, setCart, user, onClose }) {
 
       if (error) throw new Error("Erreur BDD : " + error.message);
 
+      // Appel de la Edge Function Supabase avec le Token d'autorisation
       const functionUrl = 'https://onfybrqtufwwdambnwhm.supabase.co/functions/v1/quick-worker';
       const mailRes = await fetch(functionUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          // Correction critique pour l'erreur 401 détectée dans les logs :
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
         body: JSON.stringify({
           email: user.email,
           username: user.username || user.email.split('@')[0],
