@@ -63,7 +63,8 @@ export default function App() {
       const { data, error } = await supabase
         .from('games')
         .select('*')
-        .order('id', { ascending: true });
+        // 🔄 CORRECTION ICI : 'ascending: false' pour mettre les nouveaux jeux en haut !
+        .order('id', { ascending: false });
 
       if (error) throw error;
       if (data) setGames(data);
@@ -209,7 +210,6 @@ export default function App() {
                 className={`group relative rounded-[2.5rem] p-[2px] bg-gradient-to-br ${game.gradient || 'from-white/10 to-transparent'} hover:scale-[1.02] transition-all duration-500 cursor-pointer shadow-2xl`}
               >
                 <div className="bg-[#020617] rounded-[2.4rem] p-4 h-full flex flex-col">
-                    {/* 📸 BLOC IMAGE SÉCURISÉ AVEC LE DOUBLE CHECK cover_url / image */}
                     <div className="h-48 rounded-[2rem] bg-[#0f172a] mb-6 flex items-center justify-center relative overflow-hidden">
                       {(game.cover_url || game.image) ? (
                         <img 
