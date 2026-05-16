@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Gamepad2, ShoppingCart, Search, Plus,
-  RefreshCcw, LogOut, Zap, ChevronRight, X
+  LogOut, Zap, ChevronRight, X, ArrowUpDown,
+  SlidersHorizontal, History, Sparkles, Sliders
 } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 import { supabase } from './supabaseClient';
@@ -25,6 +26,13 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState("Tous");
   const [scrolled, setScrolled] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
+  
+  // 🔥 NOUVELLES OPTIONS DE TRI ET HISTORIQUE
+  const [sortBy, setSortBy] = useState("default"); // default, price-asc, price-desc, news
+  const [showFilters, setShowFilters] = useState(false);
+  const [recentViews, setRecentViews] = useState([]);
+  const [heroIndex, setHeroIndex] = useState(0);
+
   const mainRef = useRef();
 
   useEffect(() => {
@@ -38,6 +46,9 @@ export default function App() {
         if (saved) setAvatarPreview(saved);
       } catch { localStorage.removeItem("prostore_user"); }
     }
+    // Charger l'historique des jeux consultés
+    const savedRecents = localStorage.getItem("prostore_recents");
+    if (savedRecents) setRecentViews(JSON.parse(savedRecents));
   }, []);
 
   useEffect(() => {
@@ -47,6 +58,15 @@ export default function App() {
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
   }, [isAuthenticated]);
+
+  // 🔥 Option : Rotation automatique du Hero Banner toutes les 6 secondes
+  useEffect(() => {
+    if (games.length <= 1 || searchTerm || activeCategory !== "Tous") return;
+    const interval = setInterval(() => {
+      setHeroIndex((prev) => (prev + 1) % Math.min(games.length, 4));
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [games, searchTerm, activeCategory]);
 
   const handleLoginSuccess = (userData) => {
     setUser(userData);
@@ -90,19 +110,42 @@ export default function App() {
     toast.success(`${game.title} ajouté !`);
   };
 
+  // 🔥 Option : Suivi des jeux récemment consultés (sans doublons, max 5)
+  const trackRecentView = (game) => {
+    setSelectedGame(game);
+    setRecentViews(prev => {
+      const filtered = prev.filter(g => g.id !== game.id);
+      const updated = [game, ...filtered].slice(0, 5);
+      localStorage.setItem("prostore_recents", JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const categories = useMemo(() => {
     const cats = games.map(g => g.category).filter(Boolean);
     return ["Tous", ...new Set(cats)];
   }, [games]);
 
-  const filteredGames = useMemo(() => games.filter(game => {
-    const matchSearch = (game.title || "").toLowerCase().includes(searchTerm.toLowerCase());
-    const matchCat = activeCategory === "Tous" || game.category === activeCategory;
-    return matchSearch && matchCat;
-  }), [searchTerm, activeCategory, games]);
+  // 🔥 Traitement combiné : Filtrage + Tri évolué
+  const filteredGames = useMemo(() => {
+    let result = games.filter(game => {
+      const matchSearch = (game.title || "").toLowerCase().includes(searchTerm.toLowerCase());
+      const matchCat = activeCategory === "Tous" || game.category === activeCategory;
+      return matchSearch && matchCat;
+    });
+
+    if (sortBy === "price-asc") {
+      result.sort((a, b) => Number(String(a.price).replace(/[^0-9]/g, '')) - Number(String(b.price).replace(/[^0-9]/g, '')));
+    } else if (sortBy === "price-desc") {
+      result.sort((a, b) => Number(String(b.price).replace(/[^0-9]/g, '')) - Number(String(a.price).replace(/[^0-9]/g, '')));
+    } else if (sortBy === "news") {
+      result.sort((a, b) => b.id - a.id);
+    }
+    return result;
+  }, [searchTerm, activeCategory, games, sortBy]);
 
   const cartCount = cart.reduce((a, b) => a + b.quantity, 0);
-  const featuredGame = games[0];
+  const featuredGame = games[heroIndex] || games[0];
 
   if (window.location.pathname === '/admin') return <AdminDashboard />;
   if (isProfileOpen) return <UserProfile user={user} onBack={() => setIsProfileOpen(false)} />;
@@ -111,48 +154,47 @@ export default function App() {
   return (
     <div
       ref={mainRef}
-      className="h-screen overflow-y-auto bg-[#07070d] text-white font-sans"
+      className="h-screen overflow-y-auto bg-[#05050a] text-white font-sans selection:bg-indigo-500/30"
       style={{ scrollbarWidth: "none" }}
     >
       <style>{`
         ::-webkit-scrollbar { display: none; }
-        @keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes shimmer { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
-        .fade-up { animation: fadeUp 0.5s ease forwards; }
-        .card-hover { transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.4s ease; }
-        .card-hover:hover { transform: translateY(-6px) scale(1.01); box-shadow: 0 30px 60px rgba(0,0,0,0.6); }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-up { animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .card-hover { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease, border-color 0.4s ease; }
+        .card-hover:hover { transform: translateY(-4px); border-color: rgba(99,102,241,0.2); box-shadow: 0 20px 40px rgba(0,0,0,0.7); }
       `}</style>
 
       <Toaster position="top-right" toastOptions={{
-        style: { background: '#1a1a2e', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px' }
+        style: { background: '#0b0b14', color: '#fff', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '16px', backdropFilter: 'blur(10px)' }
       }} />
 
       {/* ── NAVBAR ── */}
-      <nav className={`sticky top-0 z-50 transition-all duration-500 ${scrolled ? "bg-[#07070d]/90 backdrop-blur-2xl border-b border-white/[0.06] shadow-[0_1px_40px_rgba(0,0,0,0.6)]" : "bg-transparent"}`}>
+      <nav className={`sticky top-0 z-50 transition-all duration-500 ${scrolled ? "bg-[#05050a]/85 backdrop-blur-2xl border-b border-white/[0.04] shadow-[0_4px_30px_rgba(0,0,0,0.8)]" : "bg-transparent"}`}>
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
 
           {/* LOGO */}
           <div className="flex items-center gap-3 mr-4 cursor-pointer shrink-0" onClick={() => window.location.reload()}>
-            <div className="relative w-10 h-10 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/40">
-              <Gamepad2 size={20} className="text-white" />
-              <div className="absolute inset-0 rounded-2xl bg-indigo-400/20 animate-pulse" />
+            <div className="relative w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-600/30">
+              <Gamepad2 size={18} className="text-white" />
+              <div className="absolute inset-0 rounded-2xl bg-white/10 opacity-0 hover:opacity-100 transition-opacity" />
             </div>
-            <span className="text-lg font-black uppercase tracking-tighter hidden sm:block">
-              Pro<span className="text-indigo-400">Store</span>
+            <span className="text-base font-black uppercase tracking-widest hidden sm:block">
+              PRO<span className="text-indigo-400 font-medium">STORE</span>
             </span>
           </div>
 
           {/* SEARCH */}
-          <div className={`relative flex-1 max-w-lg transition-all duration-300 ${searchFocused ? "max-w-2xl" : ""}`}>
-            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors duration-200 ${searchFocused ? "text-indigo-400" : "text-white/20"}`} size={16} />
+          <div className={`relative flex-1 max-w-md transition-all duration-500 ${searchFocused ? "max-w-xl" : ""}`}>
+            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors duration-300 ${searchFocused ? "text-indigo-400" : "text-white/20"}`} size={15} />
             <input
               type="text"
-              placeholder="Rechercher un jeu..."
+              placeholder="Rechercher un jeu, une licence..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setSearchFocused(false)}
-              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-2xl py-3 pl-11 pr-4 text-sm outline-none text-white placeholder:text-white/20 transition-all duration-300 focus:bg-white/[0.07] focus:border-indigo-500/50 focus:shadow-[0_0_0_4px_rgba(99,102,241,0.1)]"
+              className="w-full bg-white/[0.03] border border-white/[0.06] rounded-2xl py-2.5 pl-11 pr-4 text-xs outline-none text-white placeholder:text-white/20 transition-all duration-300 focus:bg-white/[0.06] focus:border-indigo-500/40 focus:shadow-[0_0_0_4px_rgba(99,102,241,0.05)]"
             />
             {searchTerm && (
               <button onClick={() => setSearchTerm("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors">
@@ -165,11 +207,11 @@ export default function App() {
           <div className="flex items-center gap-2 ml-auto">
             {/* AVATAR */}
             <button onClick={() => setIsProfileOpen(true)}
-              className="flex items-center gap-2.5 px-3 py-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] transition-all duration-200 group">
-              <div className="w-7 h-7 rounded-xl overflow-hidden shrink-0 border border-white/10">
+              className="flex items-center gap-2.5 px-3 py-1.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 transition-all duration-200 group">
+              <div className="w-6 h-6 rounded-xl overflow-hidden shrink-0 border border-white/10">
                 {avatarPreview
                   ? <img src={avatarPreview} alt="" className="w-full h-full object-cover" />
-                  : <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-[10px] font-black">
+                  : <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-[9px] font-black">
                       {user?.username?.[0]?.toUpperCase()}
                     </div>}
               </div>
@@ -180,10 +222,10 @@ export default function App() {
 
             {/* PANIER */}
             <button onClick={() => setIsCartOpen(true)}
-              className="relative p-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.07] transition-all duration-200">
-              <ShoppingCart size={18} className="text-white/70" />
+              className="relative p-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] text-white/70 hover:text-white transition-all">
+              <ShoppingCart size={16} />
               {cartCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-indigo-500 text-[9px] font-black flex items-center justify-center shadow-lg shadow-indigo-500/50">
+                <span className="absolute -top-1 -right-1 w-4.5 h-4.5 rounded-full bg-indigo-500 text-[8px] font-black flex items-center justify-center shadow-md shadow-indigo-500/30 animate-scaleIn">
                   {cartCount}
                 </span>
               )}
@@ -191,76 +233,119 @@ export default function App() {
 
             {/* LOGOUT */}
             <button onClick={handleLogout}
-              className="p-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] hover:bg-rose-500/10 hover:border-rose-500/20 text-white/30 hover:text-rose-400 transition-all duration-200">
-              <LogOut size={18} />
+              className="p-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-rose-500/10 hover:border-rose-500/20 text-white/20 hover:text-rose-400 transition-all">
+              <LogOut size={16} />
             </button>
           </div>
         </div>
       </nav>
 
-      {/* ── HERO FEATURED ── */}
+      {/* ── HERO FEATURED DE FILTRAGE CHROMATIQUE AUTOMATIQUE ── */}
       {featuredGame && !searchTerm && activeCategory === "Tous" && (
-        <div className="relative mx-6 mt-6 mb-8 rounded-[2.5rem] overflow-hidden cursor-pointer group" style={{ height: "380px" }}
-          onClick={() => setSelectedGame(featuredGame)}>
-          {/* BG */}
+        <div className="relative mx-6 mt-4 mb-8 rounded-[2rem] overflow-hidden cursor-pointer group" style={{ height: "360px" }}
+          onClick={() => trackRecentView(featuredGame)}>
+          
+          {/* Cover Image */}
           {(featuredGame.cover_url || featuredGame.image)
             ? <img src={featuredGame.cover_url || featuredGame.image} alt={featuredGame.title}
-                className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-            : <div className={`absolute inset-0 bg-gradient-to-br ${featuredGame.gradient || 'from-indigo-600 to-purple-800'}`} />}
+                className="absolute inset-0 w-full h-full object-cover transition-transform duration-[10s] ease-out group-hover:scale-105" />
+            : <div className={`absolute inset-0 bg-gradient-to-br ${featuredGame.gradient || 'from-indigo-900 to-purple-950'}`} />}
 
-          {/* Overlay gradient */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-transparent to-transparent" />
+          {/* Gradients de fusion cinématiques */}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#05050a] via-black/30 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#05050a]/80 via-transparent to-transparent" />
+
+          {/* Indicateurs de progression du carrousel (discrets en haut à droite) */}
+          <div className="absolute top-6 right-6 flex gap-1.5 z-10">
+            {games.slice(0, 4).map((_, i) => (
+              <div 
+                key={i} 
+                onClick={(e) => { e.stopPropagation(); setHeroIndex(i); }}
+                className={`h-1 rounded-full transition-all duration-500 ${i === heroIndex ? "w-6 bg-indigo-500" : "w-1.5 bg-white/20"}`} 
+              />
+            ))}
+          </div>
 
           {/* Badge */}
-          <div className="absolute top-6 left-6 flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/20 backdrop-blur-md border border-indigo-500/30 text-[10px] font-black uppercase tracking-widest text-indigo-300">
-            <Zap size={10} className="animate-pulse" /> Nouveauté
+          <div className="absolute top-6 left-6 flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-[9px] font-black uppercase tracking-widest text-indigo-300">
+            <Zap size={9} className="text-indigo-400 animate-pulse" /> À LA UNE
           </div>
 
           {/* Content */}
-          <div className="absolute bottom-0 left-0 right-0 p-8">
-            <p className="text-[10px] font-black uppercase tracking-[0.25em] text-white/40 mb-2">{featuredGame.category}</p>
-            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter leading-none text-white mb-4 drop-shadow-2xl">
+          <div className="absolute bottom-0 left-0 right-0 p-8 z-10">
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-white/40 mb-1">{featuredGame.category}</p>
+            <h2 className="text-2xl md:text-4xl font-black uppercase tracking-tighter leading-none text-white mb-4 transition-all group-hover:translate-x-1 duration-300">
               {featuredGame.title}
             </h2>
             <div className="flex items-center gap-4">
-              <span className="text-2xl font-black text-white">
+              <span className="text-xl font-black text-white font-mono">
                 {Number(String(featuredGame.price).replace(/[^0-9]/g, '')).toLocaleString()}
-                <small className="text-xs text-indigo-400 ml-1 font-bold not-italic">FCFA</small>
+                <small className="text-[10px] text-indigo-400 ml-1 font-sans font-bold not-italic">FCFA</small>
               </span>
               <button onClick={e => { e.stopPropagation(); addToCart(featuredGame); }}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-white text-black text-xs font-black uppercase tracking-widest hover:bg-indigo-400 transition-all duration-200 shadow-2xl">
-                <Plus size={14} /> Ajouter
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-indigo-400 hover:text-white transition-all duration-300 shadow-xl">
+                <Plus size={12} /> Réserver
               </button>
-              <span className="flex items-center gap-1 text-xs text-white/40 font-bold group-hover:text-white/60 transition-colors">
-                Voir détails <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+              <span className="flex items-center gap-1 text-[11px] text-white/40 font-bold group-hover:text-white/70 transition-colors">
+                Détails <ChevronRight size={12} />
               </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── MAIN ── */}
+      {/* ── COMPOSANT MAIN ── */}
       <main className="max-w-7xl mx-auto px-6 pb-24">
 
-        {/* HEADER */}
+        {/* SECTION NAVIGATION ET OPTS DE TRI */}
         {!searchTerm && (
           <div className="mb-8 fade-up">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-black uppercase tracking-tighter text-white">
-                {activeCategory === "Tous" ? "Tout le catalogue" : activeCategory}
-                <span className="ml-3 text-sm font-bold text-white/20">{filteredGames.length} jeux</span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+              <h2 className="text-lg font-black uppercase tracking-wider text-white flex items-center gap-2">
+                {activeCategory === "Tous" ? "Découvrir" : activeCategory}
+                <span className="text-xs font-bold text-white/20">({filteredGames.length})</span>
               </h2>
+              
+              {/* Actions de tri */}
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setShowFilters(!showFilters)} 
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all ${showFilters ? "bg-indigo-600/10 border-indigo-500/30 text-indigo-400" : "bg-white/[0.02] border-white/[0.06] text-white/40 hover:text-white"}`}
+                >
+                  <SlidersHorizontal size={12} /> Filtres
+                </button>
+              </div>
             </div>
 
-            {/* CATEGORIES — scroll horizontal */}
-            <div className="flex gap-2 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
+            {/* TIROIR DE TRI AMÉLIORÉ */}
+            {showFilters && (
+              <div className="p-4 rounded-2xl bg-white/[0.01] border border-white/[0.04] mb-4 flex flex-wrap gap-2 items-center text-xs fade-up">
+                <span className="text-white/30 text-[9px] font-black uppercase tracking-widest mr-2">Trier par :</span>
+                {[
+                  { id: "default", label: "Par défaut" },
+                  { id: "price-asc", label: "Prix : Moins cher" },
+                  { id: "price-desc", label: "Prix : Plus cher" },
+                  { id: "news", label: "Plus récent" }
+                ].map(opt => (
+                  <button 
+                    key={opt.id} 
+                    onClick={() => setSortBy(opt.id)}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${sortBy === opt.id ? "bg-white/10 text-white" : "text-white/40 hover:text-white/60"}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* CATEGORIES — Barre horizontale fluide */}
+            <div className="flex gap-1.5 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
               {categories.map(cat => (
                 <button key={cat} onClick={() => setActiveCategory(cat)}
-                  className={`shrink-0 px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${
+                  className={`shrink-0 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-300 ${
                     activeCategory === cat
-                      ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/40"
-                      : "bg-white/[0.04] border border-white/[0.06] text-white/40 hover:text-white hover:bg-white/[0.08]"
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                      : "bg-white/[0.02] border border-white/[0.05] text-white/40 hover:text-white hover:bg-white/[0.05]"
                   }`}>
                   {cat}
                 </button>
@@ -269,89 +354,110 @@ export default function App() {
           </div>
         )}
 
-        {/* Search results label */}
+        {/* Label de recherche active */}
         {searchTerm && (
           <div className="mb-6 fade-up">
-            <p className="text-white/30 text-sm font-bold">
-              {filteredGames.length} résultat{filteredGames.length !== 1 ? "s" : ""} pour <span className="text-white">"{searchTerm}"</span>
+            <p className="text-white/30 text-xs font-bold">
+              {filteredGames.length} index trouvé{filteredGames.length !== 1 ? "s" : ""} pour <span className="text-white">"{searchTerm}"</span>
             </p>
           </div>
         )}
 
-        {/* GRILLE */}
+        {/* GRILLE PRINCIPALE DES JEUX */}
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-40 gap-5">
-            <div className="relative w-14 h-14">
-              <div className="absolute inset-0 rounded-full border-2 border-indigo-500/20 animate-ping" />
-              <div className="absolute inset-2 rounded-full border-2 border-t-indigo-500 border-indigo-500/10 animate-spin" />
-              <Gamepad2 size={18} className="absolute inset-0 m-auto text-indigo-400" />
+          <div className="flex flex-col items-center justify-center py-36 gap-4">
+            <div className="relative w-12 h-12">
+              <div className="absolute inset-0 rounded-full border border-indigo-500/20 animate-ping" />
+              <div className="absolute inset-1 rounded-full border border-t-indigo-500 border-indigo-500/5 animate-spin" />
+              <Gamepad2 size={14} className="absolute inset-0 m-auto text-indigo-400" />
             </div>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Chargement...</p>
+            <p className="text-[8px] font-black uppercase tracking-[0.4em] text-white/20">Chargement...</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {filteredGames.length > 0 ? filteredGames.map((game, idx) => (
               <div key={game.id}
-                onClick={() => setSelectedGame(game)}
-                className="card-hover cursor-pointer group fade-up"
-                style={{ animationDelay: `${Math.min(idx * 40, 400)}ms`, opacity: 0 }}>
+                onClick={() => trackRecentView(game)}
+                className="card-hover cursor-pointer group fade-up bg-[#09090f] border border-white/[0.03] rounded-[1.5rem] overflow-hidden flex flex-col h-full"
+                style={{ animationDelay: `${Math.min(idx * 30, 300)}ms`, opacity: 0 }}>
 
-                <div className="rounded-[1.8rem] overflow-hidden bg-[#0f0f18] border border-white/[0.05] h-full flex flex-col">
-                  {/* IMAGE */}
-                  <div className="relative h-44 overflow-hidden bg-[#13131f]">
-                    {(game.cover_url || game.image) ? (
-                      <img src={game.cover_url || game.image} alt={game.title}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-                    ) : (
-                      <div className={`w-full h-full bg-gradient-to-br ${game.gradient || 'from-indigo-600/30 to-purple-800/30'} flex items-center justify-center`}>
-                        <Gamepad2 size={40} className="text-white/10" />
-                      </div>
-                    )}
-                    {/* Overlay hover */}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
+                {/* MODULE COMPORTANT L'IMAGE */}
+                <div className="relative h-40 overflow-hidden bg-[#11111a]">
+                  {(game.cover_url || game.image) ? (
+                    <img src={game.cover_url || game.image} alt={game.title} loading="lazy"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-white/5 to-transparent flex items-center justify-center">
+                      <Gamepad2 size={32} className="text-white/5" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
 
-                    {/* Quick add button */}
+                  {/* Bouton d'ajout rapide au survol */}
+                  <button
+                    onClick={e => { e.stopPropagation(); addToCart(game); }}
+                    className="absolute bottom-2.5 right-2.5 w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 transition-all duration-300 shadow-md shadow-indigo-600/30 hover:bg-white hover:text-black">
+                    <Plus size={14} />
+                  </button>
+
+                  {/* Catégorie */}
+                  <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-[7.5px] font-black uppercase tracking-wider text-white/50">
+                    {game.category}
+                  </div>
+                </div>
+
+                {/* INFOS DU BLOC */}
+                <div className="p-3.5 flex-1 flex flex-col justify-between">
+                  <h3 className="text-[11px] font-black uppercase truncate text-white/80 group-hover:text-white transition-colors mb-2 tracking-tight">
+                    {game.title}
+                  </h3>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black font-mono text-white">
+                      {Number(String(game.price).replace(/[^0-9]/g, '')).toLocaleString()}
+                      <small className="text-[8px] text-indigo-400 ml-0.5 font-sans font-bold">FCFA</small>
+                    </span>
                     <button
                       onClick={e => { e.stopPropagation(); addToCart(game); }}
-                      className="absolute bottom-3 right-3 w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-300 shadow-lg shadow-indigo-600/50 hover:bg-white hover:text-black">
-                      <Plus size={16} />
+                      className="w-7 h-7 rounded-lg bg-indigo-600/10 text-indigo-400 flex items-center justify-center hover:bg-indigo-600 hover:text-white transition-all sm:hidden">
+                      <Plus size={12} />
                     </button>
-
-                    {/* Category badge */}
-                    <div className="absolute top-3 left-3 px-2 py-0.5 rounded-lg bg-black/50 backdrop-blur-sm border border-white/10 text-[8px] font-black uppercase tracking-widest text-white/60">
-                      {game.category}
-                    </div>
-                  </div>
-
-                  {/* INFO */}
-                  <div className="p-4 flex-1 flex flex-col justify-between">
-                    <h3 className="text-xs font-black uppercase truncate text-white/90 group-hover:text-white transition-colors mb-3">
-                      {game.title}
-                    </h3>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-black text-white">
-                        {Number(String(game.price).replace(/[^0-9]/g, '')).toLocaleString()}
-                        <small className="text-[8px] text-indigo-400 ml-0.5 font-bold">FCFA</small>
-                      </span>
-                      <button
-                        onClick={e => { e.stopPropagation(); addToCart(game); }}
-                        className="w-8 h-8 rounded-xl bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center hover:bg-indigo-600 hover:text-white hover:border-transparent transition-all duration-200 sm:hidden">
-                        <Plus size={14} />
-                      </button>
-                    </div>
                   </div>
                 </div>
               </div>
             )) : (
-              <div className="col-span-full py-24 flex flex-col items-center gap-4 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-white/[0.03] flex items-center justify-center border border-white/5">
-                  <Search size={24} className="text-white/20" />
-                </div>
-                <p className="text-white/20 font-bold text-sm">Aucun résultat trouvé</p>
+              <div className="col-span-full py-20 flex flex-col items-center gap-3 text-center">
+                <Search size={20} className="text-white/10" />
+                <p className="text-white/20 font-bold text-xs">Aucun titre ne correspond</p>
               </div>
             )}
           </div>
         )}
+
+        {/* 🔥 SECTION : HISTORIQUE DES JEUX RÉCEMMENT CONSULTÉS */}
+        {recentViews.length > 0 && !searchTerm && (
+          <div className="mt-16 fade-up">
+            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/30 flex items-center gap-2 mb-4">
+              <History size={12} /> Récemment consultés
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {recentViews.map(g => (
+                <div 
+                  key={g.id} 
+                  onClick={() => setSelectedGame(g)}
+                  className="p-2 rounded-xl bg-white/[0.01] border border-white/[0.04] hover:bg-white/[0.03] transition-all flex items-center gap-2.5 cursor-pointer group"
+                >
+                  <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-white/5">
+                    <img src={g.cover_url || g.image} alt="" className="w-full h-full object-cover" />
+                  </div>
+                  <p className="text-[10px] font-bold uppercase tracking-tight truncate text-white/50 group-hover:text-white transition-colors flex-1">
+                    {g.title}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
       </main>
 
       {isCartOpen && <CartDrawer cart={cart} setCart={setCart} user={user} onClose={() => setIsCartOpen(false)} />}
