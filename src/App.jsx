@@ -5,15 +5,16 @@ import {
 } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
-// Importation du client que nous venons de créer
+// Importation du client Supabase
 import { supabase } from './supabaseClient';
 
-// Imports des composants (assure-toi qu'ils existent dans ton dossier components)
+// Imports des composants
 import CartDrawer from "./components/CartDrawer";
 import GameDetails from "./components/GameDetails";
 import Auth from "./components/Auth";
+import UserProfile from "./components/UserProfile"; // 👤 Nouveau : Import de la page Profil
 
-// 🛠️ ÉTAPE 1 : Importation du tableau de bord Admin
+// Importation du tableau de bord Admin
 import AdminDashboard from './admin/AdminDashboard';
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [selectedGame, setSelectedGame] = useState(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false); // 👤 État pour basculer sur le profil
   const [games, setGames] = useState([]);
   const [cart, setCart] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,17 +55,17 @@ export default function App() {
     setIsAuthenticated(false);
     setUser(null);
     setCart([]);
+    setIsProfileOpen(false);
     toast.error("Déconnexion réussie");
   };
 
-  // Chargement des jeux depuis la table 'games' de Supabase
+  // Chargement des jeux depuis la table 'games' (Nouveautés en haut)
   const loadGames = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('games')
         .select('*')
-        // 🔄 CORRECTION ICI : 'ascending: false' pour mettre les nouveaux jeux en haut !
         .order('id', { ascending: false });
 
       if (error) throw error;
@@ -110,9 +112,14 @@ export default function App() {
     });
   }, [searchTerm, activeCategory, games]);
 
-  // 🛠️ ÉTAPE 2 : Intercepter l'URL pour charger l'Admin avant l'Auth
+  // Intercepter l'URL pour charger l'Admin
   if (window.location.pathname === '/admin') {
     return <AdminDashboard />;
+  }
+
+  // Intercepter l'état pour afficher le Profil de l'utilisateur
+  if (isProfileOpen) {
+    return <UserProfile user={user} onBack={() => setIsProfileOpen(false)} />;
   }
 
   if (!isAuthenticated) {
@@ -150,7 +157,11 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
-             <div className="flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-2xl">
+             {/* 👤 BLOC PROFIL CLIQUABLE */}
+             <div 
+               onClick={() => setIsProfileOpen(true)} 
+               className="flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 rounded-2xl cursor-pointer transition-all"
+             >
                 <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-[10px] font-black text-white">
                    {user?.username?.[0].toUpperCase()}
                 </div>
