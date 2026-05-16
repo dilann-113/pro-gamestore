@@ -52,7 +52,7 @@ export default function App() {
     localStorage.removeItem("prostore_user");
     setIsAuthenticated(false);
     setUser(null);
-    cart([]);
+    setCart([]);
     toast.error("Déconnexion réussie");
   };
 
@@ -209,11 +209,11 @@ export default function App() {
                 className={`group relative rounded-[2.5rem] p-[2px] bg-gradient-to-br ${game.gradient || 'from-white/10 to-transparent'} hover:scale-[1.02] transition-all duration-500 cursor-pointer shadow-2xl`}
               >
                 <div className="bg-[#020617] rounded-[2.4rem] p-4 h-full flex flex-col">
-                    {/* 📸 BLOC IMAGE CORRIGÉ AVEC RENTRÉE DE COUVERTURE RAWG */}
+                    {/* 📸 BLOC IMAGE SÉCURISÉ AVEC LE DOUBLE CHECK cover_url / image */}
                     <div className="h-48 rounded-[2rem] bg-[#0f172a] mb-6 flex items-center justify-center relative overflow-hidden">
-                      {game.image ? (
+                      {(game.cover_url || game.image) ? (
                         <img 
-                          src={game.image} 
+                          src={game.cover_url || game.image} 
                           alt={game.title} 
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                         />
