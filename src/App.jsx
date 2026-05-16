@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
-  Gamepad2, ShoppingCart, Search, Plus,
-  LogOut, Zap, ChevronRight, X, ArrowUpDown,
-  SlidersHorizontal, History, Sparkles, Sliders
+  Gamepad2, ShoppingCart, Search, Plus, LogOut,
+  Zap, ChevronRight, X, SlidersHorizontal, History,
+  TrendingUp, ArrowUpDown, Sparkles, ChevronLeft
 } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 import { supabase } from './supabaseClient';
@@ -11,6 +11,8 @@ import GameDetails from "./components/GameDetails";
 import Auth from "./components/Auth";
 import UserProfile from "./components/UserProfile";
 import AdminDashboard from './admin/AdminDashboard';
+
+const parsePrice = (p) => Number(String(p).replace(/[^0-9]/g, '')) || 0;
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -26,15 +28,18 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState("Tous");
   const [scrolled, setScrolled] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
-  
-  // 🔥 NOUVELLES OPTIONS DE TRI ET HISTORIQUE
-  const [sortBy, setSortBy] = useState("default"); // default, price-asc, price-desc, news
+  const [sortBy, setSortBy] = useState("default");
   const [showFilters, setShowFilters] = useState(false);
   const [recentViews, setRecentViews] = useState([]);
   const [heroIndex, setHeroIndex] = useState(0);
+  const [heroTransition, setHeroTransition] = useState(true);
+  const [addedIds, setAddedIds] = useState({});
 
   const mainRef = useRef();
+  const searchRef = useRef();
+  const catBarRef = useRef();
 
+  // ── INIT ──
   useEffect(() => {
     const savedUser = localStorage.getItem("prostore_user");
     if (savedUser) {
@@ -42,310 +47,346 @@ export default function App() {
         const p = JSON.parse(savedUser);
         setUser(p);
         setIsAuthenticated(true);
-        const saved = localStorage.getItem(`avatar_${p.email}`);
-        if (saved) setAvatarPreview(saved);
+        const av = localStorage.getItem(`avatar_${p.email}`);
+        if (av) setAvatarPreview(av);
       } catch { localStorage.removeItem("prostore_user"); }
     }
-    // Charger l'historique des jeux consultés
-    const savedRecents = localStorage.getItem("prostore_recents");
-    if (savedRecents) setRecentViews(JSON.parse(savedRecents));
+    const recents = localStorage.getItem("prostore_recents");
+    if (recents) try { setRecentViews(JSON.parse(recents)); } catch {}
   }, []);
 
+  // ── SCROLL DETECTION ──
   useEffect(() => {
     const el = mainRef.current;
     if (!el) return;
-    const onScroll = () => setScrolled(el.scrollTop > 60);
-    el.addEventListener("scroll", onScroll);
-    return () => el.removeEventListener("scroll", onScroll);
+    const fn = () => setScrolled(el.scrollTop > 80);
+    el.addEventListener("scroll", fn, { passive: true });
+    return () => el.removeEventListener("scroll", fn);
   }, [isAuthenticated]);
 
-  // 🔥 Option : Rotation automatique du Hero Banner toutes les 6 secondes
+  // ── HERO AUTO-ROTATE ──
   useEffect(() => {
-    if (games.length <= 1 || searchTerm || activeCategory !== "Tous") return;
-    const interval = setInterval(() => {
-      setHeroIndex((prev) => (prev + 1) % Math.min(games.length, 4));
-    }, 6000);
-    return () => clearInterval(interval);
+    if (games.length < 2 || searchTerm || activeCategory !== "Tous") return;
+    const t = setInterval(() => {
+      setHeroTransition(false);
+      setTimeout(() => {
+        setHeroIndex(p => (p + 1) % Math.min(games.length, 5));
+        setHeroTransition(true);
+      }, 300);
+    }, 7000);
+    return () => clearInterval(t);
   }, [games, searchTerm, activeCategory]);
 
-  const handleLoginSuccess = (userData) => {
+  // ── AUTH ──
+  const handleLoginSuccess = useCallback((userData) => {
     setUser(userData);
     setIsAuthenticated(true);
     localStorage.setItem("prostore_user", JSON.stringify(userData));
-    const saved = localStorage.getItem(`avatar_${userData.email}`);
-    if (saved) setAvatarPreview(saved);
+    const av = localStorage.getItem(`avatar_${userData.email}`);
+    if (av) setAvatarPreview(av);
     toast.success(`Bienvenue, ${userData.username} !`);
-  };
+  }, []);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     localStorage.removeItem("prostore_user");
     setIsAuthenticated(false);
     setUser(null);
     setCart([]);
     setIsProfileOpen(false);
     setAvatarPreview(null);
-  };
+  }, []);
 
-  const loadGames = async () => {
+  // ── DATA ──
+  const loadGames = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase.from('games').select('*').order('id', { ascending: false });
       if (error) throw error;
       if (data) setGames(data);
-    } catch (e) {
-      toast.error("Erreur de chargement");
-    } finally {
-      setLoading(false);
-    }
-  };
+    } catch { toast.error("Erreur de chargement"); }
+    finally { setLoading(false); }
+  }, []);
 
   useEffect(() => { if (isAuthenticated) loadGames(); }, [isAuthenticated]);
 
-  const addToCart = (game) => {
+  // ── PANIER ──
+  const addToCart = useCallback((game, e) => {
+    if (e) e.stopPropagation();
     setCart(prev => {
       const exists = prev.find(i => i.id === game.id);
-      if (exists) return prev.map(i => i.id === game.id ? { ...i, quantity: i.quantity + 1 } : i);
-      return [...prev, { ...game, quantity: 1 }];
+      return exists
+        ? prev.map(i => i.id === game.id ? { ...i, quantity: i.quantity + 1 } : i)
+        : [...prev, { ...game, quantity: 1 }];
     });
-    toast.success(`${game.title} ajouté !`);
-  };
+    setAddedIds(prev => ({ ...prev, [game.id]: true }));
+    setTimeout(() => setAddedIds(prev => ({ ...prev, [game.id]: false })), 1200);
+    toast.success(`${game.title} ajouté !`, { icon: "🎮" });
+  }, []);
 
-  // 🔥 Option : Suivi des jeux récemment consultés (sans doublons, max 5)
-  const trackRecentView = (game) => {
+  // ── RECENTS ──
+  const trackView = useCallback((game) => {
     setSelectedGame(game);
     setRecentViews(prev => {
-      const filtered = prev.filter(g => g.id !== game.id);
-      const updated = [game, ...filtered].slice(0, 5);
-      localStorage.setItem("prostore_recents", JSON.stringify(updated));
-      return updated;
+      const next = [game, ...prev.filter(g => g.id !== game.id)].slice(0, 6);
+      localStorage.setItem("prostore_recents", JSON.stringify(next));
+      return next;
     });
-  };
+  }, []);
 
+  // ── FILTRES ──
   const categories = useMemo(() => {
     const cats = games.map(g => g.category).filter(Boolean);
     return ["Tous", ...new Set(cats)];
   }, [games]);
 
-  // 🔥 Traitement combiné : Filtrage + Tri évolué
   const filteredGames = useMemo(() => {
-    let result = games.filter(game => {
-      const matchSearch = (game.title || "").toLowerCase().includes(searchTerm.toLowerCase());
-      const matchCat = activeCategory === "Tous" || game.category === activeCategory;
-      return matchSearch && matchCat;
+    let r = games.filter(g => {
+      const ms = (g.title || "").toLowerCase().includes(searchTerm.toLowerCase());
+      const mc = activeCategory === "Tous" || g.category === activeCategory;
+      return ms && mc;
     });
-
-    if (sortBy === "price-asc") {
-      result.sort((a, b) => Number(String(a.price).replace(/[^0-9]/g, '')) - Number(String(b.price).replace(/[^0-9]/g, '')));
-    } else if (sortBy === "price-desc") {
-      result.sort((a, b) => Number(String(b.price).replace(/[^0-9]/g, '')) - Number(String(a.price).replace(/[^0-9]/g, '')));
-    } else if (sortBy === "news") {
-      result.sort((a, b) => b.id - a.id);
-    }
-    return result;
+    if (sortBy === "price-asc") r = [...r].sort((a, b) => parsePrice(a.price) - parsePrice(b.price));
+    else if (sortBy === "price-desc") r = [...r].sort((a, b) => parsePrice(b.price) - parsePrice(a.price));
+    else if (sortBy === "news") r = [...r].sort((a, b) => b.id - a.id);
+    return r;
   }, [searchTerm, activeCategory, games, sortBy]);
 
   const cartCount = cart.reduce((a, b) => a + b.quantity, 0);
-  const featuredGame = games[heroIndex] || games[0];
+  const featuredGames = games.slice(0, 5);
+  const featuredGame = featuredGames[heroIndex] || games[0];
+  const showHero = !searchTerm && activeCategory === "Tous" && featuredGame;
+
+  // ── KEYBOARD SHORTCUT ──
+  useEffect(() => {
+    const fn = (e) => {
+      if (e.key === "/" && document.activeElement !== searchRef.current) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (e.key === "Escape") setSearchTerm("");
+    };
+    window.addEventListener("keydown", fn);
+    return () => window.removeEventListener("keydown", fn);
+  }, []);
+
+  // ── SCROLL CATEGORIES TO ACTIVE ──
+  useEffect(() => {
+    const bar = catBarRef.current;
+    if (!bar) return;
+    const active = bar.querySelector('[data-active="true"]');
+    if (active) active.scrollIntoView({ inline: "center", behavior: "smooth", block: "nearest" });
+  }, [activeCategory]);
 
   if (window.location.pathname === '/admin') return <AdminDashboard />;
   if (isProfileOpen) return <UserProfile user={user} onBack={() => setIsProfileOpen(false)} />;
   if (!isAuthenticated) return <><Toaster position="top-right" /><Auth onLoginSuccess={handleLoginSuccess} /></>;
 
   return (
-    <div
-      ref={mainRef}
-      className="h-screen overflow-y-auto bg-[#05050a] text-white font-sans selection:bg-indigo-500/30"
-      style={{ scrollbarWidth: "none" }}
-    >
+    <div ref={mainRef} className="h-screen overflow-y-auto bg-[#06060c] text-white font-sans" style={{ scrollbarWidth: "none" }}>
       <style>{`
-        ::-webkit-scrollbar { display: none; }
-        @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-        .fade-up { animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .card-hover { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease, border-color 0.4s ease; }
-        .card-hover:hover { transform: translateY(-4px); border-color: rgba(99,102,241,0.2); box-shadow: 0 20px 40px rgba(0,0,0,0.7); }
+        *{-webkit-tap-highlight-color:transparent}
+        ::-webkit-scrollbar{display:none}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes pop{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+        @keyframes heroFade{from{opacity:0;transform:scale(1.03)}to{opacity:1;transform:scale(1)}}
+        .fade-up{animation:fadeUp 0.5s cubic-bezier(0.16,1,0.3,1) forwards}
+        .hero-img{animation:heroFade 0.6s ease forwards}
+        .card{transition:transform 0.35s cubic-bezier(0.16,1,0.3,1),box-shadow 0.35s ease,border-color 0.35s ease}
+        .card:hover{transform:translateY(-5px) scale(1.01);box-shadow:0 24px 48px rgba(0,0,0,0.7);border-color:rgba(99,102,241,0.15)}
+        .btn-add{transition:all 0.25s cubic-bezier(0.34,1.56,0.64,1)}
+        .btn-add.added{animation:pop 0.4s ease}
+        .cat-scroll::-webkit-scrollbar{display:none}
+        .glass{background:rgba(255,255,255,0.03);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+        .group-scale-107:hover img{transform:scale(1.07)}
       `}</style>
 
       <Toaster position="top-right" toastOptions={{
-        style: { background: '#0b0b14', color: '#fff', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '16px', backdropFilter: 'blur(10px)' }
+        style: { background: '#0d0d18', color: '#fff', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '14px', fontSize: '13px' },
+        duration: 2000,
       }} />
 
-      {/* ── NAVBAR ── */}
-      <nav className={`sticky top-0 z-50 transition-all duration-500 ${scrolled ? "bg-[#05050a]/85 backdrop-blur-2xl border-b border-white/[0.04] shadow-[0_4px_30px_rgba(0,0,0,0.8)]" : "bg-transparent"}`}>
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center gap-4">
+      {/* ══ NAVBAR ══ */}
+      <nav className={`sticky top-0 z-50 transition-all duration-500 ${scrolled ? "border-b border-white/[0.04] shadow-[0_8px_32px_rgba(0,0,0,0.6)]" : ""}`}
+        style={{ background: scrolled ? "rgba(6,6,12,0.88)" : "transparent", backdropFilter: scrolled ? "blur(24px)" : "none" }}>
+        <div className="max-w-screen-xl mx-auto px-5 py-3.5 flex items-center gap-3">
 
           {/* LOGO */}
-          <div className="flex items-center gap-3 mr-4 cursor-pointer shrink-0" onClick={() => window.location.reload()}>
-            <div className="relative w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-600/30">
-              <Gamepad2 size={18} className="text-white" />
-              <div className="absolute inset-0 rounded-2xl bg-white/10 opacity-0 hover:opacity-100 transition-opacity" />
+          <button onClick={() => window.location.reload()} className="flex items-center gap-2.5 mr-3 shrink-0 group">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-600/30 group-hover:shadow-indigo-500/50 transition-shadow">
+              <Gamepad2 size={17} className="text-white" />
             </div>
-            <span className="text-base font-black uppercase tracking-widest hidden sm:block">
-              PRO<span className="text-indigo-400 font-medium">STORE</span>
+            <span className="text-[15px] font-black uppercase tracking-wider hidden md:block">
+              Pro<span className="text-indigo-400">Store</span>
             </span>
-          </div>
+          </button>
 
           {/* SEARCH */}
-          <div className={`relative flex-1 max-w-md transition-all duration-500 ${searchFocused ? "max-w-xl" : ""}`}>
-            <Search className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors duration-300 ${searchFocused ? "text-indigo-400" : "text-white/20"}`} size={15} />
+          <div className={`relative flex-1 max-w-sm transition-all duration-400 ${searchFocused ? "max-w-lg" : ""}`}>
+            <Search size={14} className={`absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none transition-colors duration-300 ${searchFocused ? "text-indigo-400" : "text-white/20"}`} />
             <input
+              ref={searchRef}
               type="text"
-              placeholder="Rechercher un jeu, une licence..."
+              placeholder="Rechercher… (appuyer /)"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setSearchFocused(false)}
-              className="w-full bg-white/[0.03] border border-white/[0.06] rounded-2xl py-2.5 pl-11 pr-4 text-xs outline-none text-white placeholder:text-white/20 transition-all duration-300 focus:bg-white/[0.06] focus:border-indigo-500/40 focus:shadow-[0_0_0_4px_rgba(99,102,241,0.05)]"
+              className="w-full bg-white/[0.04] border border-white/[0.07] rounded-xl py-2.5 pl-10 pr-9 text-xs outline-none text-white placeholder:text-white/20 transition-all duration-300 focus:bg-white/[0.07] focus:border-indigo-500/40 focus:ring-4 focus:ring-indigo-500/10"
             />
-            {searchTerm && (
-              <button onClick={() => setSearchTerm("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors">
-                <X size={14} />
-              </button>
-            )}
+            {searchTerm
+              ? <button onClick={() => setSearchTerm("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors"><X size={13} /></button>
+              : <kbd className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-white/15 font-mono border border-white/10 px-1.5 py-0.5 rounded hidden sm:flex items-center">/</kbd>}
           </div>
 
+          <div className="flex-1" />
+
           {/* ACTIONS */}
-          <div className="flex items-center gap-2 ml-auto">
-            {/* AVATAR */}
+          <div className="flex items-center gap-1.5">
             <button onClick={() => setIsProfileOpen(true)}
-              className="flex items-center gap-2.5 px-3 py-1.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 transition-all duration-200 group">
-              <div className="w-6 h-6 rounded-xl overflow-hidden shrink-0 border border-white/10">
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-white/[0.07] glass hover:border-white/10 transition-all duration-200 group">
+              <div className="w-6 h-6 rounded-lg overflow-hidden border border-white/10 shrink-0">
                 {avatarPreview
                   ? <img src={avatarPreview} alt="" className="w-full h-full object-cover" />
                   : <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-[9px] font-black">
                       {user?.username?.[0]?.toUpperCase()}
                     </div>}
               </div>
-              <span className="hidden sm:block text-[10px] font-black uppercase tracking-widest text-white/40 group-hover:text-white/70 transition-colors">
+              <span className="hidden sm:block text-[10px] font-bold text-white/40 group-hover:text-white/70 transition-colors max-w-[80px] truncate">
                 {user?.username}
               </span>
             </button>
 
-            {/* PANIER */}
             <button onClick={() => setIsCartOpen(true)}
-              className="relative p-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] text-white/70 hover:text-white transition-all">
+              className="relative p-2.5 rounded-xl border border-white/[0.07] glass hover:border-indigo-500/30 text-white/50 hover:text-white transition-all duration-200">
               <ShoppingCart size={16} />
               {cartCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4.5 h-4.5 rounded-full bg-indigo-500 text-[8px] font-black flex items-center justify-center shadow-md shadow-indigo-500/30 animate-scaleIn">
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] rounded-full bg-indigo-500 text-[8px] font-black flex items-center justify-center px-1 shadow-lg shadow-indigo-500/50 border border-[#06060c]">
                   {cartCount}
                 </span>
               )}
             </button>
 
-            {/* LOGOUT */}
             <button onClick={handleLogout}
-              className="p-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-rose-500/10 hover:border-rose-500/20 text-white/20 hover:text-rose-400 transition-all">
+              className="p-2.5 rounded-xl border border-white/[0.07] glass text-white/20 hover:text-rose-400 hover:border-rose-500/20 transition-all duration-200">
               <LogOut size={16} />
             </button>
           </div>
         </div>
       </nav>
 
-      {/* ── HERO FEATURED DE FILTRAGE CHROMATIQUE AUTOMATIQUE ── */}
-      {featuredGame && !searchTerm && activeCategory === "Tous" && (
-        <div className="relative mx-6 mt-4 mb-8 rounded-[2rem] overflow-hidden cursor-pointer group" style={{ height: "360px" }}
-          onClick={() => trackRecentView(featuredGame)}>
-          
-          {/* Cover Image */}
-          {(featuredGame.cover_url || featuredGame.image)
-            ? <img src={featuredGame.cover_url || featuredGame.image} alt={featuredGame.title}
-                className="absolute inset-0 w-full h-full object-cover transition-transform duration-[10s] ease-out group-hover:scale-105" />
-            : <div className={`absolute inset-0 bg-gradient-to-br ${featuredGame.gradient || 'from-indigo-900 to-purple-950'}`} />}
+      {/* ══ HERO ══ */}
+      {showHero && (
+        <div className="px-5 pt-4 pb-6">
+          <div className="relative rounded-[1.75rem] overflow-hidden cursor-pointer group max-w-screen-xl mx-auto" style={{ height: "clamp(240px, 36vw, 400px)" }}
+            onClick={() => trackView(featuredGame)}>
 
-          {/* Gradients de fusion cinématiques */}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#05050a] via-black/30 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#05050a]/80 via-transparent to-transparent" />
+            <div className={`absolute inset-0 transition-opacity duration-300 ${heroTransition ? "opacity-100" : "opacity-0"}`}>
+              {(featuredGame.cover_url || featuredGame.image)
+                ? <img key={featuredGame.id} src={featuredGame.cover_url || featuredGame.image} alt={featuredGame.title}
+                    className="hero-img w-full h-full object-cover" />
+                : <div className={`w-full h-full bg-gradient-to-br ${featuredGame.gradient || 'from-indigo-900 to-violet-950'}`} />}
+            </div>
 
-          {/* Indicateurs de progression du carrousel (discrets en haut à droite) */}
-          <div className="absolute top-6 right-6 flex gap-1.5 z-10">
-            {games.slice(0, 4).map((_, i) => (
-              <div 
-                key={i} 
-                onClick={(e) => { e.stopPropagation(); setHeroIndex(i); }}
-                className={`h-1 rounded-full transition-all duration-500 ${i === heroIndex ? "w-6 bg-indigo-500" : "w-1.5 bg-white/20"}`} 
-              />
-            ))}
-          </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-[#06060c] via-[#06060c]/25 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#06060c]/75 via-transparent to-transparent" />
 
-          {/* Badge */}
-          <div className="absolute top-6 left-6 flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 backdrop-blur-md border border-white/10 text-[9px] font-black uppercase tracking-widest text-indigo-300">
-            <Zap size={9} className="text-indigo-400 animate-pulse" /> À LA UNE
-          </div>
+            {/* DOTS */}
+            <div className="absolute top-5 right-5 flex gap-1.5 z-10">
+              {featuredGames.map((_, i) => (
+                <button key={i} onClick={e => { e.stopPropagation(); setHeroIndex(i); }}
+                  className={`rounded-full transition-all duration-400 ${i === heroIndex ? "w-5 h-1.5 bg-white" : "w-1.5 h-1.5 bg-white/25 hover:bg-white/50"}`} />
+              ))}
+            </div>
 
-          {/* Content */}
-          <div className="absolute bottom-0 left-0 right-0 p-8 z-10">
-            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-white/40 mb-1">{featuredGame.category}</p>
-            <h2 className="text-2xl md:text-4xl font-black uppercase tracking-tighter leading-none text-white mb-4 transition-all group-hover:translate-x-1 duration-300">
-              {featuredGame.title}
-            </h2>
-            <div className="flex items-center gap-4">
-              <span className="text-xl font-black text-white font-mono">
-                {Number(String(featuredGame.price).replace(/[^0-9]/g, '')).toLocaleString()}
-                <small className="text-[10px] text-indigo-400 ml-1 font-sans font-bold not-italic">FCFA</small>
-              </span>
-              <button onClick={e => { e.stopPropagation(); addToCart(featuredGame); }}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-black text-[10px] font-black uppercase tracking-widest hover:bg-indigo-400 hover:text-white transition-all duration-300 shadow-xl">
-                <Plus size={12} /> Réserver
-              </button>
-              <span className="flex items-center gap-1 text-[11px] text-white/40 font-bold group-hover:text-white/70 transition-colors">
-                Détails <ChevronRight size={12} />
-              </span>
+            {/* ARROWS */}
+            <button className="absolute left-4 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full glass border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:border-white/20 z-10"
+              onClick={e => { e.stopPropagation(); setHeroIndex(p => (p - 1 + featuredGames.length) % featuredGames.length); }}>
+              <ChevronLeft size={16} className="text-white/70" />
+            </button>
+            <button className="absolute right-4 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full glass border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:border-white/20 z-10"
+              onClick={e => { e.stopPropagation(); setHeroIndex(p => (p + 1) % featuredGames.length); }}>
+              <ChevronRight size={16} className="text-white/70" />
+            </button>
+
+            <div className="absolute top-5 left-5 flex items-center gap-1.5 px-3 py-1 rounded-full glass border border-white/10 text-[9px] font-black uppercase tracking-widest text-white/60 z-10">
+              <Zap size={9} className="text-indigo-400 animate-pulse" /> À LA UNE
+            </div>
+
+            <div className={`absolute bottom-0 left-0 p-7 z-10 transition-all duration-300 ${heroTransition ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}`}>
+              <p className="text-[9px] font-black uppercase tracking-[0.3em] text-white/35 mb-1.5">{featuredGame.category}</p>
+              <h2 className="text-2xl sm:text-4xl font-black uppercase tracking-tighter leading-none text-white mb-4 max-w-[65%] drop-shadow-2xl">
+                {featuredGame.title}
+              </h2>
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-xl font-black text-white font-mono">
+                  {parsePrice(featuredGame.price).toLocaleString()}
+                  <small className="text-[10px] text-indigo-400 ml-1 font-sans font-bold">FCFA</small>
+                </span>
+                <button onClick={e => addToCart(featuredGame, e)}
+                  className={`btn-add flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl transition-all duration-300 ${addedIds[featuredGame.id] ? "added bg-emerald-500 text-white" : "bg-white text-black hover:bg-indigo-500 hover:text-white"}`}>
+                  {addedIds[featuredGame.id] ? "✓ Ajouté" : <><Plus size={11} /> Ajouter</>}
+                </button>
+                <span className="flex items-center gap-1 text-[10px] text-white/30 font-bold group-hover:text-white/60 transition-colors">
+                  Détails <ChevronRight size={11} />
+                </span>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── COMPOSANT MAIN ── */}
-      <main className="max-w-7xl mx-auto px-6 pb-24">
+      {/* ══ CATALOGUE ══ */}
+      <main className="max-w-screen-xl mx-auto px-5 pb-28">
 
-        {/* SECTION NAVIGATION ET OPTS DE TRI */}
         {!searchTerm && (
-          <div className="mb-8 fade-up">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-              <h2 className="text-lg font-black uppercase tracking-wider text-white flex items-center gap-2">
-                {activeCategory === "Tous" ? "Découvrir" : activeCategory}
-                <span className="text-xs font-bold text-white/20">({filteredGames.length})</span>
-              </h2>
-              
-              {/* Actions de tri */}
+          <div className="mb-6 fade-up">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => setShowFilters(!showFilters)} 
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all ${showFilters ? "bg-indigo-600/10 border-indigo-500/30 text-indigo-400" : "bg-white/[0.02] border-white/[0.06] text-white/40 hover:text-white"}`}
-                >
-                  <SlidersHorizontal size={12} /> Filtres
+                {activeCategory !== "Tous" && (
+                  <button onClick={() => setActiveCategory("Tous")} className="p-1.5 rounded-lg glass border border-white/[0.06] text-white/30 hover:text-white transition-colors">
+                    <X size={13} />
+                  </button>
+                )}
+                <h2 className="text-base font-black uppercase tracking-wide text-white">
+                  {activeCategory === "Tous" ? "Catalogue" : activeCategory}
+                  <span className="ml-2 text-xs font-bold text-white/20">{filteredGames.length}</span>
+                </h2>
+              </div>
+
+              <div className="relative">
+                <button onClick={() => setShowFilters(!showFilters)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${showFilters || sortBy !== "default" ? "bg-indigo-600/15 border-indigo-500/30 text-indigo-400" : "glass border-white/[0.06] text-white/30 hover:text-white"}`}>
+                  <SlidersHorizontal size={11} />
+                  <span className="hidden sm:block">Trier</span>
+                  {sortBy !== "default" && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 ml-0.5" />}
                 </button>
+
+                {showFilters && (
+                  <div className="absolute right-0 top-full mt-2 glass border border-white/[0.08] rounded-2xl p-2 min-w-[190px] z-40 shadow-2xl fade-up">
+                    {[
+                      { id: "default", label: "Par défaut", icon: Sparkles },
+                      { id: "news", label: "Plus récent", icon: Zap },
+                      { id: "price-asc", label: "Prix croissant", icon: TrendingUp },
+                      { id: "price-desc", label: "Prix décroissant", icon: ArrowUpDown },
+                    ].map(opt => (
+                      <button key={opt.id} onClick={() => { setSortBy(opt.id); setShowFilters(false); }}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${sortBy === opt.id ? "bg-indigo-600/20 text-indigo-300" : "text-white/40 hover:text-white hover:bg-white/[0.04]"}`}>
+                        <opt.icon size={12} /> {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* TIROIR DE TRI AMÉLIORÉ */}
-            {showFilters && (
-              <div className="p-4 rounded-2xl bg-white/[0.01] border border-white/[0.04] mb-4 flex flex-wrap gap-2 items-center text-xs fade-up">
-                <span className="text-white/30 text-[9px] font-black uppercase tracking-widest mr-2">Trier par :</span>
-                {[
-                  { id: "default", label: "Par défaut" },
-                  { id: "price-asc", label: "Prix : Moins cher" },
-                  { id: "price-desc", label: "Prix : Plus cher" },
-                  { id: "news", label: "Plus récent" }
-                ].map(opt => (
-                  <button 
-                    key={opt.id} 
-                    onClick={() => setSortBy(opt.id)}
-                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${sortBy === opt.id ? "bg-white/10 text-white" : "text-white/40 hover:text-white/60"}`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* CATEGORIES — Barre horizontale fluide */}
-            <div className="flex gap-1.5 overflow-x-auto pb-2" style={{ scrollbarWidth: "none" }}>
+            {/* CATEGORIES */}
+            <div ref={catBarRef} className="cat-scroll flex gap-1.5 overflow-x-auto pb-1">
               {categories.map(cat => (
-                <button key={cat} onClick={() => setActiveCategory(cat)}
-                  className={`shrink-0 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-300 ${
+                <button key={cat} data-active={activeCategory === cat} onClick={() => setActiveCategory(cat)}
+                  className={`shrink-0 px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all duration-250 ${
                     activeCategory === cat
-                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                      : "bg-white/[0.02] border border-white/[0.05] text-white/40 hover:text-white hover:bg-white/[0.05]"
+                      ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25 scale-[1.02]"
+                      : "glass border border-white/[0.05] text-white/35 hover:text-white hover:bg-white/[0.05]"
                   }`}>
                   {cat}
                 </button>
@@ -354,110 +395,117 @@ export default function App() {
           </div>
         )}
 
-        {/* Label de recherche active */}
         {searchTerm && (
-          <div className="mb-6 fade-up">
-            <p className="text-white/30 text-xs font-bold">
-              {filteredGames.length} index trouvé{filteredGames.length !== 1 ? "s" : ""} pour <span className="text-white">"{searchTerm}"</span>
+          <div className="mb-5 fade-up flex items-center gap-3">
+            <p className="text-sm text-white/40 font-bold">
+              <span className="text-white">{filteredGames.length}</span> résultat{filteredGames.length !== 1 ? "s" : ""} pour
+              <span className="text-indigo-400 ml-1">"{searchTerm}"</span>
             </p>
+            <button onClick={() => setSearchTerm("")} className="text-[10px] text-white/25 hover:text-white/50 transition-colors font-bold underline">
+              Effacer
+            </button>
           </div>
         )}
 
-        {/* GRILLE PRINCIPALE DES JEUX */}
+        {/* GRILLE */}
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-36 gap-4">
+          <div className="flex flex-col items-center justify-center py-40 gap-4">
             <div className="relative w-12 h-12">
-              <div className="absolute inset-0 rounded-full border border-indigo-500/20 animate-ping" />
-              <div className="absolute inset-1 rounded-full border border-t-indigo-500 border-indigo-500/5 animate-spin" />
+              <div className="absolute inset-0 rounded-full border border-indigo-500/15 animate-ping" />
+              <div className="absolute inset-1 rounded-full border-2 border-t-indigo-500 border-r-indigo-500/30 border-b-transparent border-l-transparent animate-spin" />
               <Gamepad2 size={14} className="absolute inset-0 m-auto text-indigo-400" />
             </div>
-            <p className="text-[8px] font-black uppercase tracking-[0.4em] text-white/20">Chargement...</p>
+            <p className="text-[9px] font-black uppercase tracking-[0.4em] text-white/15">Chargement...</p>
+          </div>
+        ) : filteredGames.length > 0 ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3.5">
+            {filteredGames.map((game, idx) => {
+              const isAdded = addedIds[game.id];
+              return (
+                <div key={game.id} onClick={() => trackView(game)}
+                  className="card cursor-pointer group bg-[#0b0b14] border border-white/[0.04] rounded-[1.4rem] overflow-hidden flex flex-col fade-up"
+                  style={{ animationDelay: `${Math.min(idx * 25, 350)}ms`, opacity: 0 }}>
+
+                  <div className="relative overflow-hidden bg-[#12121e] group-scale-107" style={{ height: "clamp(130px, 13vw, 175px)" }}>
+                    {(game.cover_url || game.image) ? (
+                      <img src={game.cover_url || game.image} alt={game.title} loading="lazy"
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.07]" />
+                    ) : (
+                      <div className={`w-full h-full bg-gradient-to-br ${game.gradient || 'from-indigo-700/20 to-violet-900/20'} flex items-center justify-center`}>
+                        <Gamepad2 size={28} className="text-white/8" />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0b0b14]/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                    <button onClick={e => addToCart(game, e)}
+                      className={`btn-add absolute bottom-2.5 right-2.5 w-8 h-8 rounded-[10px] flex items-center justify-center shadow-xl z-10 opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 ${isAdded ? "added bg-emerald-500 text-white" : "bg-indigo-600 text-white hover:bg-white hover:text-black"}`}>
+                      {isAdded ? <span className="text-[10px] font-black">✓</span> : <Plus size={14} />}
+                    </button>
+
+                    <div className="absolute top-2.5 left-2.5 px-1.5 py-0.5 rounded-md glass border border-white/8 text-[7px] font-black uppercase tracking-wider text-white/45">
+                      {game.category}
+                    </div>
+                  </div>
+
+                  <div className="p-3 flex-1 flex flex-col justify-between gap-2">
+                    <h3 className="text-[11px] font-black uppercase leading-tight text-white/75 group-hover:text-white transition-colors line-clamp-2">
+                      {game.title}
+                    </h3>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-white font-mono">
+                        {parsePrice(game.price).toLocaleString()}
+                        <small className="text-[7.5px] text-indigo-400 ml-0.5 font-sans">FCFA</small>
+                      </span>
+                      <button onClick={e => addToCart(game, e)}
+                        className={`btn-add sm:hidden w-7 h-7 rounded-lg flex items-center justify-center transition-all ${isAdded ? "added bg-emerald-500 text-white" : "bg-indigo-600/15 border border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white hover:border-transparent"}`}>
+                        {isAdded ? <span className="text-[9px] font-black">✓</span> : <Plus size={12} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {filteredGames.length > 0 ? filteredGames.map((game, idx) => (
-              <div key={game.id}
-                onClick={() => trackRecentView(game)}
-                className="card-hover cursor-pointer group fade-up bg-[#09090f] border border-white/[0.03] rounded-[1.5rem] overflow-hidden flex flex-col h-full"
-                style={{ animationDelay: `${Math.min(idx * 30, 300)}ms`, opacity: 0 }}>
-
-                {/* MODULE COMPORTANT L'IMAGE */}
-                <div className="relative h-40 overflow-hidden bg-[#11111a]">
-                  {(game.cover_url || game.image) ? (
-                    <img src={game.cover_url || game.image} alt={game.title} loading="lazy"
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                  ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-white/5 to-transparent flex items-center justify-center">
-                      <Gamepad2 size={32} className="text-white/5" />
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-
-                  {/* Bouton d'ajout rapide au survol */}
-                  <button
-                    onClick={e => { e.stopPropagation(); addToCart(game); }}
-                    className="absolute bottom-2.5 right-2.5 w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 translate-y-1 group-hover:translate-y-0 transition-all duration-300 shadow-md shadow-indigo-600/30 hover:bg-white hover:text-black">
-                    <Plus size={14} />
-                  </button>
-
-                  {/* Catégorie */}
-                  <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-[7.5px] font-black uppercase tracking-wider text-white/50">
-                    {game.category}
-                  </div>
-                </div>
-
-                {/* INFOS DU BLOC */}
-                <div className="p-3.5 flex-1 flex flex-col justify-between">
-                  <h3 className="text-[11px] font-black uppercase truncate text-white/80 group-hover:text-white transition-colors mb-2 tracking-tight">
-                    {game.title}
-                  </h3>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black font-mono text-white">
-                      {Number(String(game.price).replace(/[^0-9]/g, '')).toLocaleString()}
-                      <small className="text-[8px] text-indigo-400 ml-0.5 font-sans font-bold">FCFA</small>
-                    </span>
-                    <button
-                      onClick={e => { e.stopPropagation(); addToCart(game); }}
-                      className="w-7 h-7 rounded-lg bg-indigo-600/10 text-indigo-400 flex items-center justify-center hover:bg-indigo-600 hover:text-white transition-all sm:hidden">
-                      <Plus size={12} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )) : (
-              <div className="col-span-full py-20 flex flex-col items-center gap-3 text-center">
-                <Search size={20} className="text-white/10" />
-                <p className="text-white/20 font-bold text-xs">Aucun titre ne correspond</p>
-              </div>
-            )}
+          <div className="flex flex-col items-center justify-center py-28 gap-4 fade-up">
+            <div className="w-16 h-16 rounded-2xl glass border border-white/[0.05] flex items-center justify-center">
+              <Search size={22} className="text-white/15" />
+            </div>
+            <div className="text-center">
+              <p className="text-white/25 font-black text-sm mb-1">Aucun résultat</p>
+              <p className="text-white/15 text-xs">Essaie un autre titre ou catégorie</p>
+            </div>
+            <button onClick={() => { setSearchTerm(""); setActiveCategory("Tous"); }}
+              className="px-4 py-2 rounded-xl glass border border-white/[0.06] text-[10px] font-black text-white/40 hover:text-white transition-colors">
+              Réinitialiser
+            </button>
           </div>
         )}
 
-        {/* 🔥 SECTION : HISTORIQUE DES JEUX RÉCEMMENT CONSULTÉS */}
+        {/* RECENTS */}
         {recentViews.length > 0 && !searchTerm && (
-          <div className="mt-16 fade-up">
-            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white/30 flex items-center gap-2 mb-4">
-              <History size={12} /> Récemment consultés
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="mt-14 fade-up">
+            <p className="text-[9px] font-black uppercase tracking-[0.25em] text-white/20 flex items-center gap-2 mb-3">
+              <History size={11} /> Récemment consultés
+            </p>
+            <div className="flex gap-2 overflow-x-auto cat-scroll pb-1">
               {recentViews.map(g => (
-                <div 
-                  key={g.id} 
-                  onClick={() => setSelectedGame(g)}
-                  className="p-2 rounded-xl bg-white/[0.01] border border-white/[0.04] hover:bg-white/[0.03] transition-all flex items-center gap-2.5 cursor-pointer group"
-                >
-                  <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-white/5">
-                    <img src={g.cover_url || g.image} alt="" className="w-full h-full object-cover" />
+                <button key={g.id} onClick={() => trackView(g)}
+                  className="flex items-center gap-2.5 px-3 py-2 rounded-2xl glass border border-white/[0.05] hover:border-white/10 transition-all shrink-0 group">
+                  <div className="w-8 h-8 rounded-lg overflow-hidden bg-white/5 shrink-0">
+                    {(g.cover_url || g.image)
+                      ? <img src={g.cover_url || g.image} alt="" className="w-full h-full object-cover" />
+                      : <div className="w-full h-full flex items-center justify-center"><Gamepad2 size={14} className="text-white/20" /></div>}
                   </div>
-                  <p className="text-[10px] font-bold uppercase tracking-tight truncate text-white/50 group-hover:text-white transition-colors flex-1">
-                    {g.title}
-                  </p>
-                </div>
+                  <div className="text-left">
+                    <p className="text-[10px] font-bold text-white/40 group-hover:text-white/70 transition-colors truncate max-w-[100px]">{g.title}</p>
+                    <p className="text-[8px] text-white/20 font-bold">{parsePrice(g.price).toLocaleString()} FCFA</p>
+                  </div>
+                </button>
               ))}
             </div>
           </div>
         )}
-
       </main>
 
       {isCartOpen && <CartDrawer cart={cart} setCart={setCart} user={user} onClose={() => setIsCartOpen(false)} />}
