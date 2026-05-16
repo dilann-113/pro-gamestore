@@ -6,7 +6,10 @@ import {
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
-// Extraction sécurisée avec gestion propre du CORS et filtrage des pixels sombres
+// --- UTILITAIRES ---
+
+// Extrait la couleur dominante sans risquer de erreurs CORS ou de canvas "tainted".
+// Elle ignore les pixels trop sombres pour garantir des dégradés vibrants.
 function extractColor(imgEl, callback) {
   try {
     const canvas = document.createElement("canvas");
@@ -14,6 +17,7 @@ function extractColor(imgEl, callback) {
     canvas.height = 40;
     const ctx = canvas.getContext("2d");
     
+    // Crucial pour les images distantes (Supabase Storage, etc.)
     imgEl.crossOrigin = "anonymous";
     
     ctx.drawImage(imgEl, 0, 0, 40, 40);
@@ -21,7 +25,8 @@ function extractColor(imgEl, callback) {
     
     let r = 0, g = 0, b = 0, count = 0;
     for (let i = 0; i < data.length; i += 16) {
-      if (data[i+3] > 128 && (data[i] + data[i+1] + data[i+2] > 60)) {
+      // Filtrer les pixels trop transparents ou trop sombres
+      if (data[i+3] > 128 && (data[i] + data[i+1] + data[i+2] > 70)) {
         r += data[i]; 
         g += data[i + 1]; 
         b += data[i + 2]; 
@@ -35,17 +40,22 @@ function extractColor(imgEl, callback) {
       b = Math.round(b / count);
       callback(`${r}, ${g}, ${b}`);
     } else {
-      callback("99, 102, 241"); // Fallback Indigo ProStore
+      callback("99, 102, 241"); // Fallback : Indigo ProStore Premium
     }
   } catch (e) {
-    callback("99, 102, 241"); // Fallback en cas de blocage CORS strict
+    // Si l'image bloque via CORS ou erreur canvas
+    callback("99, 102, 241");
   }
 }
+
+// --- COMPOSANT PRINCIPAL ---
 
 export default function UserProfile({ user, onBack }) {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [activeTab, setActiveTab] = useState("orders");
+  
+  // Variables d'état pour les transitions de couleur
   const [dominantColor, setDominantColor] = useState("99, 102, 241");
   const [prevColor, setPrevColor] = useState("99, 102, 241");
   const [avatarPreview, setAvatarPreview] = useState(null);
@@ -70,16 +80,19 @@ export default function UserProfile({ user, onBack }) {
     
     fetchOrders();
 
+    // Charger l'avatar depuis localStorage (caché pour rapidité)
     const saved = localStorage.getItem(`avatar_${user?.email}`);
     if (saved) setAvatarPreview(saved);
   }, [user]);
 
-  // Gère la transition en douceur lors du changement de couleur dominante
+  // Met à jour la couleur dominante avec une transition d'opacité fluide.
+  // C'est cette fonction qui gère le "cross-fade" entre l'ancienne et la nouvelle couleur.
   const updateDominantColor = (newColor) => {
     if (newColor === dominantColor) return;
     setPrevColor(dominantColor);
     setDominantColor(newColor);
     setFadeTrigger(false);
+    // Petit délai pour forcer le reflow du DOM et déclencher la transition CSS
     setTimeout(() => {
       setFadeTrigger(true);
     }, 50);
@@ -95,6 +108,7 @@ export default function UserProfile({ user, onBack }) {
       setAvatarPreview(dataUrl);
       localStorage.setItem(`avatar_${user?.email}`, dataUrl);
       
+      // Extraction instantanée depuis la chaîne Base64 locale (Zéro conflit CORS)
       const img = new Image();
       img.src = dataUrl;
       img.onload = () => extractColor(img, updateDominantColor);
@@ -121,7 +135,13 @@ export default function UserProfile({ user, onBack }) {
   return (
     <div className="min-h-screen font-sans text-slate-200 bg-[#050508] relative overflow-x-hidden selection:bg-white/10">
       
-      {/* COUCHE INFÉRIEURE : Ancienne couleur en arrière-plan */}
+      {/* CALQUES D'AMBIANCE DE FOND (Cross-Fade)
+          Technique Spotify-like : une couche fixe pour l'ancienne couleur,
+          une couche supérieure qui s'anime en opacité pour la nouvelle couleur.
+          C'est 100% fluide et ultra-léger pour le GPU.
+      */}
+      
+      {/* 1. Couche inférieure : l'ancienne couleur */}
       <div 
         className="absolute inset-0 pointer-events-none z-0"
         style={{ 
@@ -129,7 +149,7 @@ export default function UserProfile({ user, onBack }) {
         }}
       />
 
-      {/* COUCHE SUPÉRIEURE : Nouvelle couleur qui apparaît en fondu enchaîné (Fade In) */}
+      {/* 2. Couche supérieure : la nouvelle couleur (Fade In/Out) */}
       <div 
         className={`absolute inset-0 pointer-events-none z-0 transition-opacity duration-1000 ease-in-out ${
           fadeTrigger ? "opacity-100" : "opacity-0"
@@ -139,13 +159,13 @@ export default function UserProfile({ user, onBack }) {
         }}
       />
 
-      {/* BLOC DE CONTENU PRINCIPAL (Au-dessus des fonds d'ambiance) */}
+      {/* --- BLOC DE CONTENU PRINCIPAL (Élevé au-dessus des fonds) --- */}
       <div className="relative z-10 w-full">
         
         {/* HERO HEADER — Style Playlist Spotify Épuré */}
         <div className="relative pt-20 pb-10 px-6 md:px-12">
           
-          {/* Fond lumineux localisé du Header pour l'effet de profondeur */}
+          {/* Lueur de profondeur localisée pour le Header */}
           <div 
             className={`absolute inset-0 -z-10 transition-opacity duration-1000 ease-in-out ${
               fadeTrigger ? "opacity-100" : "opacity-0"
@@ -155,7 +175,7 @@ export default function UserProfile({ user, onBack }) {
             }}
           />
 
-          {/* Bouton Retour sécurisé (pas de conflit d'historique) */}
+          {/* Bouton Retour ultra-pro et sécurisé (pas de conflit d'historique) */}
           <button 
             onClick={onBack}
             className="absolute top-6 left-6 p-2.5 rounded-full bg-black/40 backdrop-blur-md hover:bg-black/70 border border-white/5 text-slate-400 hover:text-white transition-all group"
@@ -164,6 +184,7 @@ export default function UserProfile({ user, onBack }) {
           </button>
 
           <div className="flex flex-col md:flex-row items-center md:items-end gap-8 max-w-5xl mx-auto">
+            
             {/* AVATAR ROND CLIQUEUR */}
             <div className="relative group flex-shrink-0 z-10">
               <div 
@@ -186,8 +207,9 @@ export default function UserProfile({ user, onBack }) {
                     {user?.username?.[0]?.toUpperCase() || "U"}
                   </div>
                 )}
+                {/* Overlay interactif d'édition */}
                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col items-center justify-center gap-1 rounded-full backdrop-blur-sm">
-                  <Camera size={24} className="text-white" />
+                  <Camera size={24} className="text-white animate-pulse" />
                   <span className="text-[10px] font-black uppercase tracking-wider text-white">Modifier</span>
                 </div>
               </div>
@@ -215,6 +237,8 @@ export default function UserProfile({ user, onBack }) {
 
         {/* CORPS PRINCIPAL DE LA PAGE */}
         <div className="px-6 md:px-12 pb-16 max-w-5xl mx-auto relative z-10">
+          
+          {/* Boutons d'action mats et discrets */}
           <div className="flex items-center justify-center md:justify-start gap-3 mb-10 -mt-2">
             <button 
               onClick={() => fileInputRef.current?.click()}
@@ -228,7 +252,7 @@ export default function UserProfile({ user, onBack }) {
             </div>
           </div>
 
-          {/* GRILLE DES COMPTEURS ADAPTATIFS */}
+          {/* GRILLE DES COMPTEURS ADAPTATIFS (Design matte design, translucide) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
             {[
               { label: "Transactions", value: orders.length, icon: Package },
@@ -250,7 +274,7 @@ export default function UserProfile({ user, onBack }) {
             ))}
           </div>
 
-          {/* NAVIGATION DES ONGLETS */}
+          {/* NAVIGATION DES ONGLETS MATS */}
           <div className="flex gap-2 mb-8 border-b border-white/5">
             {[
               { id: "orders", label: "Historique d'achats" },
@@ -270,7 +294,7 @@ export default function UserProfile({ user, onBack }) {
             ))}
           </div>
 
-          {/* ONGLET HISTORIQUE DES COMMANDES */}
+          {/* CONTENU : ONGLET HISTORIQUE DES COMMANDES (Style tracklist Spotify épuré) */}
           {activeTab === "orders" && (
             <div className="space-y-1 bg-black/10 p-2 rounded-2xl border border-white/[0.02]">
               {loadingOrders ? (
@@ -283,6 +307,7 @@ export default function UserProfile({ user, onBack }) {
                   key={order.id}
                   className="group flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-white/[0.04] transition-all duration-150 border border-transparent hover:border-white/[0.02]"
                 >
+                  {/* Numéro ou icône au survol */}
                   <div className="w-5 flex items-center justify-center shrink-0">
                     <span className="text-xs font-mono font-bold text-white/30 group-hover:hidden">
                       {String(idx + 1).padStart(2, '0')}
@@ -290,6 +315,7 @@ export default function UserProfile({ user, onBack }) {
                     <ShoppingBag size={13} className="hidden group-hover:block text-white/50" />
                   </div>
 
+                  {/* Jaquette ou icône de clé */}
                   <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white/5 border border-white/5 flex items-center justify-center shadow-md">
                     {Array.isArray(order.items) && (order.items[0]?.cover_url || order.items[0]?.image) ? (
                       <img src={order.items[0].cover_url || order.items[0].image} alt="" className="w-full h-full object-cover" />
@@ -298,6 +324,7 @@ export default function UserProfile({ user, onBack }) {
                     )}
                   </div>
 
+                  {/* Titre & Date */}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-slate-200 truncate group-hover:text-white transition-colors">
                       {Array.isArray(order.items) ? order.items.map(i => i.title).join(", ") : "Achat numérique"}
@@ -308,10 +335,12 @@ export default function UserProfile({ user, onBack }) {
                     </p>
                   </div>
 
-                  <div className="hidden sm:flex items-center gap-1 text-[9px] font-black text-emerald-400 bg-emerald-500/5 border border-emerald-500/10 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                  {/* Status validé discret */}
+                  <div className="hidden sm:flex items-center gap-1 text-[9px] font-black text-emerald-400 bg-emerald-500/5 border border-emerald-500/10 px-2 py-0.5 rounded-md uppercase tracking-wider shrink-0">
                     <CheckCircle2 size={10} /> Validé
                   </div>
 
+                  {/* Prix aligné à droite */}
                   <p className="text-sm font-mono font-black text-white shrink-0 pl-2">
                     {Number(order.total_price).toLocaleString()} <span className="text-white/30 text-[10px] font-sans font-bold">FCFA</span>
                   </p>
@@ -325,7 +354,7 @@ export default function UserProfile({ user, onBack }) {
             </div>
           )}
 
-          {/* ONGLET SUCCÈS (GAMIFICATION) */}
+          {/* CONTENU : ONGLET SUCCÈS (Gamification, cards mats) */}
           {activeTab === "achievements" && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               {[
