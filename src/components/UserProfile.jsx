@@ -1,219 +1,312 @@
-import React, { useState, useEffect } from "react";
-import { 
-  Mail, ArrowLeft, ShoppingBag, Clock, 
-  CheckCircle2, ShieldCheck, Wallet, Flame, Terminal
+import React, { useState, useEffect, useRef } from "react";
+import {
+  ArrowLeft, ShoppingBag, Clock, CheckCircle2,
+  ShieldCheck, Gamepad2, TrendingUp, Package,
+  Camera, Shield
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
+
+// Extraction sécurisée avec gestion propre du CORS et des erreurs
+function extractColor(imgEl, callback) {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 40;
+    canvas.height = 40;
+    const ctx = canvas.getContext("2d");
+    
+    // On force le crossOrigin pour éviter le canvas "souillé" (tainted canvas)
+    imgEl.crossOrigin = "anonymous";
+    
+    ctx.drawImage(imgEl, 0, 0, 40, 40);
+    const data = ctx.getImageData(0, 0, 40, 40).data;
+    
+    let r = 0, g = 0, b = 0, count = 0;
+    for (let i = 0; i < data.length; i += 16) {
+      // Éviter de prendre les pixels trop sombres ou transparents qui gâchent le dégradé
+      if (data[i+3] > 128 && (data[i] + data[i+1] + data[i+2] > 60)) {
+        r += data[i]; 
+        g += data[i + 1]; 
+        b += data[i + 2]; 
+        count++;
+      }
+    }
+    
+    if (count > 0) {
+      r = Math.round(r / count);
+      g = Math.round(g / count);
+      b = Math.round(b / count);
+      callback(`${r}, ${g}, ${b}`);
+    } else {
+      callback("99, 102, 241"); // Fallback Indigo Premium
+    }
+  } catch (e) {
+    // Si l'image bloque à cause du CORS, on extrait via une méthode alternative ou fallback discret
+    callback("99, 102, 241");
+  }
+}
 
 export default function UserProfile({ user, onBack }) {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
-
-  // Configuration du thème dynamique basé sur le profil
-  // Tu pourras plus tard lier ces couleurs à un choix de l'utilisateur ou à sa photo !
-  const theme = {
-    avatarBg: "from-fuchsia-600 to-indigo-600", // Le dégradé de l'avatar principal
-    glowColor: "bg-indigo-500",                  // La lueur de fond diffuse
-    accentText: "text-indigo-400",                // Les accents sur les titres/badges
-    accentBorder: "group-hover:border-indigo-500/30",
-    accentBg: "bg-indigo-500/5",
-    priceText: "text-indigo-400"
-  };
+  const [activeTab, setActiveTab] = useState("orders");
+  const [dominantColor, setDominantColor] = useState("99, 102, 241");
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  const fileInputRef = useRef();
 
   useEffect(() => {
-    const fetchUserOrders = async () => {
+    const fetchOrders = async () => {
       if (!user?.email) return;
       try {
-        const { data, error } = await supabase
-          .from("orders")
-          .select("*")
+        const { data } = await supabase
+          .from("orders").select("*")
           .eq("customer_email", user.email)
           .order("created_at", { ascending: false });
-
-        if (error) throw error;
         if (data) setOrders(data);
-      } catch (err) {
-        console.error("Erreur récupération commandes:", err.message);
-      } finally {
-        setLoadingOrders(false);
+      } catch (e) { 
+        console.error("Erreur commandes:", e); 
+      } finally { 
+        setLoadingOrders(false); 
       }
     };
+    
+    fetchOrders();
 
-    fetchUserOrders();
+    // Charger l'avatar depuis localStorage
+    const saved = localStorage.getItem(`avatar_${user?.email}`);
+    if (saved) setAvatarPreview(saved);
   }, [user]);
 
-  const totalSpent = orders.reduce((sum, order) => sum + (Number(order.total_price) || 0), 0);
-  const totalGames = orders.reduce((sum, order) => {
-    const itemsCount = Array.isArray(order.items) 
-      ? order.items.reduce((acc, item) => acc + (Number(item.quantity) || 1), 0)
-      : 0;
-    return sum + itemsCount;
-  }, 0);
+  const handleAvatarChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      setAvatarPreview(dataUrl);
+      localStorage.setItem(`avatar_${user?.email}`, dataUrl);
+      
+      // On crée une image temporaire pour extraire immédiatement la couleur du Base64 (Pas de pb CORS ici !)
+      const img = new Image();
+      img.src = dataUrl;
+      img.onload = () => extractColor(img, setDominantColor);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleImgLoad = (e) => {
+    extractColor(e.target, setDominantColor);
+  };
+
+  const totalSpent = orders.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
+  const totalGames = orders.reduce((s, o) =>
+    s + (Array.isArray(o.items) ? o.items.reduce((a, i) => a + (Number(i.quantity) || 1), 0) : 0), 0);
+
+  const getRank = () => {
+    if (totalSpent >= 500000) return { label: "Légende", icon: "👑", color: "text-amber-400" };
+    if (totalSpent >= 200000) return { label: "Élite", icon: "💎", color: "text-cyan-400" };
+    if (totalSpent >= 50000) return { label: "Pro", icon: "⚡", color: "text-indigo-400" };
+    return { label: "Rookie", icon: "🎮", color: "text-slate-400" };
+  };
+  const rank = getRank();
 
   return (
-    <div className="min-h-screen bg-[#030712] text-slate-300 font-sans p-6 md:p-10 relative overflow-hidden selection:bg-indigo-500/30">
-      
-      {/* 🌌 Lueur de fond diffuse synchronisée avec le thème */}
-      <div className={`absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] ${theme.glowColor}/[0.02] rounded-full blur-[180px] pointer-events-none`} />
+    <div className="min-h-screen font-sans text-slate-200 transition-all duration-1000 ease-out selection:bg-white/10"
+      style={{ background: `linear-gradient(180deg, rgb(${dominantColor}) 0%, #07070a 40%, #050508 100%)` }}>
 
-      <div className="max-w-6xl mx-auto relative z-10">
-        
-        {/* ⬅️ Retour Catalogue */}
-        <button 
-          onClick={onBack}
-          className="flex items-center gap-2 text-slate-500 hover:text-white mb-10 group transition-all text-[10px] font-black uppercase tracking-[0.25em]"
-        >
-          <ArrowLeft size={12} className="group-hover:-translate-x-1 transition-transform" />
-          Retour au catalogue
+      {/* HERO HEADER — Style Spotify Épuré */}
+      <div className="relative pt-20 pb-10 px-6 md:px-12 transition-all duration-1000"
+        style={{ background: `linear-gradient(180deg, rgba(${dominantColor}, 0.7) 0%, rgba(${dominantColor}, 0.15) 85%, transparent 100%)` }}>
+
+        {/* Bouton Retour Fluide */}
+        <button onClick={onBack}
+          className="absolute top-6 left-6 p-2.5 rounded-full bg-black/40 backdrop-blur-md hover:bg-black/70 border border-white/5 text-slate-400 hover:text-white transition-all group">
+          <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
         </button>
 
-        {/* CONTENEUR PRINCIPAL */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
-          
-          {/* GAUCHE : BLOC PROFIL ADAPTATIF */}
-          <div className="lg:col-span-1 space-y-4">
-            
-            <div className="bg-[#080d1a]/50 border border-white/[0.03] rounded-3xl p-6 relative overflow-hidden shadow-2xl backdrop-blur-sm">
-              <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-              
-              {/* Avatar à dégradé fluide */}
-              <div className="relative w-24 h-24 mx-auto mb-5">
-                <div className={`absolute inset-0 bg-gradient-to-tr ${theme.avatarBg} rounded-3xl blur-xl opacity-30`} />
-                <div className={`relative w-full h-full rounded-3xl bg-gradient-to-tr ${theme.avatarBg} flex items-center justify-center text-3xl font-black text-white shadow-lg border border-white/10`}>
-                  {user?.username?.[0].toUpperCase() || "U"}
-                </div>
-              </div>
+        <div className="flex flex-col md:flex-row items-center md:items-end gap-8 max-w-5xl mx-auto">
 
-              <h2 className="text-xl font-black uppercase tracking-tight text-white text-center mb-1">
-                {user?.username}
-              </h2>
-              
-              <p className={`text-[9px] text-center font-black uppercase tracking-[0.2em] ${theme.accentText} ${theme.accentBg} border border-white/5 py-1 px-3 rounded-md w-max mx-auto mb-6`}>
-                Membre Privilège
-              </p>
-
-              {/* Infos système */}
-              <div className="space-y-2 border-t border-white/5 pt-5">
-                <div className="bg-black/30 p-3 rounded-xl border border-white/[0.01] flex items-center gap-3">
-                  <Mail size={14} className="text-slate-600 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-[8px] font-bold uppercase tracking-widest text-slate-500">Adresse Email</p>
-                    <p className="text-xs text-slate-400 truncate font-mono">{user?.email}</p>
-                  </div>
-                </div>
-                
-                <div className="bg-black/30 p-3 rounded-xl border border-white/[0.01] flex items-center gap-3">
-                  <ShieldCheck size={14} className="text-slate-600 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-[8px] font-bold uppercase tracking-widest text-slate-500">Sécurité</p>
-                    <p className="text-xs text-emerald-500 font-bold tracking-wide">Compte Vérifié</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* TABLEAU DES COMPTEURS MAT */}
-            <div className="bg-[#080d1a]/50 border border-white/[0.03] rounded-3xl p-5 space-y-4 shadow-2xl backdrop-blur-sm">
-              <div className="flex items-center justify-between border-b border-white/5 pb-3">
-                <div className="flex items-center gap-2 text-slate-400">
-                  <Flame size={14} className={theme.accentText} />
-                  <span className="text-[10px] font-bold tracking-wider uppercase">Jeux possédés</span>
-                </div>
-                <span className="text-lg font-mono font-black text-white">{totalGames}</span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-slate-400">
-                  <Wallet size={14} className="text-purple-400" />
-                  <span className="text-[10px] font-bold tracking-wider uppercase">Total investi</span>
-                </div>
-                <span className="text-base font-mono font-black text-white">
-                  {totalSpent.toLocaleString()} <span className="text-[9px] text-purple-400 font-bold">FCFA</span>
-                </span>
-              </div>
-            </div>
-
-          </div>
-
-          {/* DROITE : HISTORIQUE D'ACHATS SOMBRE ET NET */}
-          <div className="lg:col-span-3">
-            <div className="bg-[#080d1a]/30 border border-white/[0.03] rounded-3xl p-6 md:p-8 shadow-2xl backdrop-blur-sm">
-              
-              <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-white flex items-center gap-2">
-                  <Terminal size={14} className={theme.accentText} />
-                  Historique des commandes
-                </h3>
-                <span className="text-[9px] font-mono text-slate-600">COMMANDES: {orders.length}</span>
-              </div>
-
-              {loadingOrders ? (
-                <div className="py-20 flex flex-col items-center justify-center gap-3">
-                  <div className="w-5 h-5 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
-                  <p className="text-[9px] font-mono tracking-widest text-slate-600">CHARGEMENT EN COURS...</p>
-                </div>
-              ) : orders.length > 0 ? (
-                <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/5">
-                  {orders.map((order) => (
-                    <div 
-                      key={order.id} 
-                      className={`group bg-[#090f1c]/40 border border-white/[0.02] ${theme.accentBorder} hover:bg-[#090f1c]/80 transition-all duration-200 rounded-2xl p-4 flex flex-col md:flex-row justify-between md:items-center gap-4`}
-                    >
-                      <div className="space-y-2.5">
-                        <div className="flex items-center gap-3">
-                          <span className="text-[9px] font-mono font-bold bg-white/5 px-2 py-0.5 rounded text-slate-400">
-                            #{String(order.id).padStart(4, '0')}
-                          </span>
-                          <span className="text-[9px] text-slate-500 font-mono flex items-center gap-1">
-                            <Clock size={10} />
-                            {new Date(order.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
-                          </span>
-                        </div>
-
-                        {/* Jeux achetés (Badges discrets) */}
-                        <div className="flex flex-wrap gap-1.5">
-                          {Array.isArray(order.items) ? (
-                            order.items.map((item, idx) => (
-                              <span key={idx} className="text-xs bg-white/[0.02] px-3 py-1 rounded-xl text-slate-300 border border-white/[0.02] font-medium">
-                                {item.title} <span className={`${theme.accentText} font-black ml-1 text-[10px]`}>x{item.quantity || 1}</span>
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-xs text-slate-600 font-mono">Détails non trouvés</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Prix & Statut */}
-                      <div className="flex items-center justify-between md:justify-end gap-6 border-t md:border-t-0 border-white/5 pt-3 md:pt-0 shrink-0">
-                        <div className="text-left md:text-right">
-                          <p className="text-[8px] font-bold text-slate-600 uppercase tracking-widest font-mono">Montant</p>
-                          <p className="text-base font-mono font-black text-white">
-                            {Number(order.total_price).toLocaleString()}{" "}
-                            <span className={`text-[9px] ${theme.priceText} font-bold font-sans`}>FCFA</span>
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 bg-emerald-500/5 text-emerald-400 border border-emerald-500/10 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider">
-                          <CheckCircle2 size={11} />
-                          Validé
-                        </div>
-                      </div>
-
-                    </div>
-                  ))}
-                </div>
+          {/* AVATAR ROND ULTRA PRO */}
+          <div className="relative group flex-shrink-0 z-10">
+            <div className="w-40 h-40 md:w-48 md:h-48 rounded-full overflow-hidden shadow-[0_25px_50px_-12px_rgba(0,0,0,0.7)] ring-4 ring-black/40 cursor-pointer bg-[#101014] relative"
+              onClick={() => fileInputRef.current?.click()}>
+              {avatarPreview ? (
+                <img src={avatarPreview} alt="Avatar" crossOrigin="anonymous"
+                  onLoad={handleImgLoad}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
               ) : (
-                <div className="py-16 text-center border border-dashed border-white/5 rounded-2xl bg-black/10">
-                  <p className="text-slate-600 font-mono text-[10px] uppercase tracking-widest">Aucune commande enregistrée</p>
+                <div className="w-full h-full flex items-center justify-center text-6xl font-black tracking-tighter text-white"
+                  style={{ background: `linear-gradient(135deg, rgba(${dominantColor}, 0.4) 0%, rgba(0,0,0,0.4) 100%)` }}>
+                  {user?.username?.[0]?.toUpperCase() || "U"}
                 </div>
               )}
-
+              {/* Overlay d'édition */}
+              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col items-center justify-center gap-1 rounded-full backdrop-blur-sm">
+                <Camera size={24} className="text-white animate-pulse" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-white">Modifier</span>
+              </div>
             </div>
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
           </div>
 
+          {/* INFO USER */}
+          <div className="flex-1 text-center md:text-left">
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/50 mb-2">Profil joueur</p>
+            <h1 className="text-4xl md:text-6xl font-black text-white mb-4 leading-none tracking-tighter drop-shadow-md">
+              {user?.username}
+            </h1>
+            <div className="flex flex-wrap justify-center md:justify-start items-center gap-3 text-xs text-white/60 font-medium">
+              <span className={`font-black px-2.5 py-1 rounded-md bg-white/5 border border-white/5 ${rank.color}`}>
+                {rank.icon} {rank.label.toUpperCase()}
+              </span>
+              <span>•</span>
+              <span className="font-mono"><strong className="text-white font-sans font-bold">{orders.length}</strong> achat{orders.length > 1 ? 's' : ''}</span>
+              <span>•</span>
+              <span className="font-mono"><strong className="text-white font-sans font-bold">{totalGames}</strong> jeu{totalGames > 1 ? 's' : ''}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CONTENU PRINCIPAL */}
+      <div className="px-6 md:px-12 pb-16 max-w-5xl mx-auto relative z-10">
+
+        {/* BOUTONS D'ACTION SECONDAIRES */}
+        <div className="flex items-center justify-center md:justify-start gap-3 mb-10 -mt-2">
+          <button onClick={() => fileInputRef.current?.click()}
+            className="px-5 py-2 rounded-full border border-white/10 bg-white/[0.02] hover:bg-white/5 text-xs font-bold text-slate-300 hover:text-white transition-all backdrop-blur-sm">
+            Changer d'image
+          </button>
+          <div className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+            <ShieldCheck size={12} />
+            Compte Certifié
+          </div>
         </div>
 
+        {/* PANNEAU DE KANBAN DES STATS (MAtte design) */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+          {[
+            { label: "Transactions", value: orders.length, icon: Package },
+            { label: "Jeux acquis", value: totalGames, icon: Gamepad2 },
+            { label: "Total investi", value: `${totalSpent.toLocaleString()} FCFA`, icon: TrendingUp, isMono: true },
+          ].map((s, i) => (
+            <div key={i} className="rounded-2xl p-5 transition-all duration-300 hover:bg-white/[0.04] border backdrop-blur-md"
+              style={{ background: `rgba(${dominantColor}, 0.04)`, borderColor: `rgba(${dominantColor}, 0.12)` }}>
+              <s.icon size={16} className="mb-4 text-white/40" />
+              <p className={`text-2xl md:text-3xl font-black text-white mb-1 ${s.isMono ? 'font-mono' : 'tracking-tight'}`}>{s.value}</p>
+              <p className="text-[9px] text-white/40 font-black uppercase tracking-widest">{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* ONGLETS NAVIGATION */}
+        <div className="flex gap-2 mb-8 border-b border-white/5">
+          {[
+            { id: "orders", label: "Historique d'achats" },
+            { id: "achievements", label: "Succès débloqués" },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-3 text-xs font-black uppercase tracking-wider transition-all border-b-2 -mb-px ${
+                activeTab === tab.id
+                  ? "text-white border-white"
+                  : "text-white/30 border-transparent hover:text-white/60"
+              }`}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* LISTE DES COMMANDES STYLE SPOTIFY */}
+        {activeTab === "orders" && (
+          <div className="space-y-1 bg-black/10 p-2 rounded-2xl border border-white/[0.02]">
+            {loadingOrders ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-2">
+                <div className="w-6 h-6 border-2 border-white/10 border-t-white rounded-full animate-spin" />
+                <span className="text-[9px] font-mono tracking-widest text-white/30">SYNC...</span>
+              </div>
+            ) : orders.length > 0 ? orders.map((order, idx) => (
+              <div key={order.id}
+                className="group flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-white/[0.04] transition-all duration-150 border border-transparent hover:border-white/[0.02]">
+
+                {/* Index / Icon au survol */}
+                <div className="w-5 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-mono font-bold text-white/30 group-hover:hidden">
+                    {String(idx + 1).padStart(2, '0')}
+                  </span>
+                  <ShoppingBag size={13} className="hidden group-hover:block text-white/50" />
+                </div>
+
+                {/* Mini jaquette dynamique */}
+                <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-white/5 border border-white/5 flex items-center justify-center shadow-md">
+                  {Array.isArray(order.items) && (order.items[0]?.cover_url || order.items[0]?.image) ? (
+                    <img src={order.items[0].cover_url || order.items[0].image} alt=""
+                      className="w-full h-full object-cover" />
+                  ) : (
+                    <Gamepad2 size={15} className="text-white/20" />
+                  )}
+                </div>
+
+                {/* Titre & Date */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-200 truncate group-hover:text-white transition-colors">
+                    {Array.isArray(order.items)
+                      ? order.items.map(i => i.title).join(", ")
+                      : "Achat de clé numérique"}
+                  </p>
+                  <p className="text-[10px] text-white/30 font-medium flex items-center gap-1 mt-0.5">
+                    <Clock size={10} />
+                    {new Date(order.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </p>
+                </div>
+
+                {/* Status discret */}
+                <div className="hidden sm:flex items-center gap-1 text-[9px] font-black text-emerald-400 bg-emerald-500/5 border border-emerald-500/10 px-2 py-0.5 rounded-md uppercase tracking-wider">
+                  <CheckCircle2 size={10} /> Validé
+                </div>
+
+                {/* Prix aligné à droite */}
+                <p className="text-sm font-mono font-black text-white shrink-0 pl-2">
+                  {Number(order.total_price).toLocaleString()} <span className="text-white/30 text-[10px] font-sans font-bold">FCFA</span>
+                </p>
+              </div>
+            )) : (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <ShoppingBag size={32} className="text-white/10 mb-3" />
+                <p className="text-white/30 font-bold text-xs uppercase tracking-wider">Aucune transaction enregistrée</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* SECTION ACHIEVEMENTS NET ET CARRE */}
+        {activeTab === "achievements" && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {[
+              { icon: "🎮", title: "Premier Pas", desc: "Première commande validée", unlocked: orders.length >= 1 },
+              { icon: "🔥", title: "Collectionneur", desc: "5 commandes ou plus", unlocked: orders.length >= 5 },
+              { icon: "💎", title: "Gros Dépensier", desc: "+100k FCFA investis", unlocked: totalSpent >= 100000 },
+              { icon: "⚡", title: "积累 (Accumulation)", desc: "10 jeux ou plus possédés", unlocked: totalGames >= 10 },
+              { icon: "👑", title: "Baleine ProStore", desc: "+500k FCFA de budget", unlocked: totalSpent >= 500000 },
+              { icon: "🚀", title: "Fidélité Absolue", desc: "10 commandes enregistrées", unlocked: orders.length >= 10 },
+            ].map((a, i) => (
+              <div key={i} className="rounded-2xl p-5 border transition-all duration-300"
+                style={{
+                  background: a.unlocked ? `rgba(${dominantColor}, 0.05)` : 'rgba(0,0,0,0.15)',
+                  borderColor: a.unlocked ? `rgba(${dominantColor}, 0.25)` : 'rgba(255,255,255,0.03)',
+                  opacity: a.unlocked ? 1 : 0.4
+                }}>
+                <div className="text-2xl mb-3 filter drop-shadow-sm">{a.unlocked ? a.icon : "🔒"}</div>
+                <p className="font-black text-xs uppercase tracking-wider text-white mb-1">{a.title}</p>
+                <p className="text-xs text-white/40 font-medium">{a.desc}</p>
+                {a.unlocked && (
+                  <div className="mt-3 flex items-center gap-1 text-[8px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/5 px-2 py-0.5 rounded w-max border border-emerald-500/10">
+                    <CheckCircle2 size={9} /> Débloqué
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
