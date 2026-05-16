@@ -52,7 +52,7 @@ export default function App() {
     localStorage.removeItem("prostore_user");
     setIsAuthenticated(false);
     setUser(null);
-    setCart([]);
+    cart([]);
     toast.error("Déconnexion réussie");
   };
 
@@ -209,9 +209,20 @@ export default function App() {
                 className={`group relative rounded-[2.5rem] p-[2px] bg-gradient-to-br ${game.gradient || 'from-white/10 to-transparent'} hover:scale-[1.02] transition-all duration-500 cursor-pointer shadow-2xl`}
               >
                 <div className="bg-[#020617] rounded-[2.4rem] p-4 h-full flex flex-col">
+                    {/* 📸 BLOC IMAGE CORRIGÉ AVEC RENTRÉE DE COUVERTURE RAWG */}
                     <div className="h-48 rounded-[2rem] bg-[#0f172a] mb-6 flex items-center justify-center relative overflow-hidden">
-                      <div className={`absolute inset-0 bg-gradient-to-br ${game.gradient} opacity-20 group-hover:opacity-40 transition-opacity`} />
-                      <Gamepad2 size={64} className="text-white/5 group-hover:scale-110 group-hover:text-white/20 transition-all duration-500" />
+                      {game.image ? (
+                        <img 
+                          src={game.image} 
+                          alt={game.title} 
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                        />
+                      ) : (
+                        <>
+                          <div className={`absolute inset-0 bg-gradient-to-br ${game.gradient || 'from-indigo-500/20 to-purple-500/20'} opacity-20 group-hover:opacity-40 transition-opacity`} />
+                          <Gamepad2 size={64} className="text-white/5 group-hover:scale-110 group-hover:text-white/20 transition-all duration-500" />
+                        </>
+                      )}
                     </div>
                     
                     <div className="px-2 flex-1">
