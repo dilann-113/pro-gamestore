@@ -57,7 +57,6 @@ export default function CartDrawer({ cart, setCart, user, onClose }) {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          // Correction critique pour l'erreur 401 détectée dans les logs :
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify({
@@ -111,21 +110,33 @@ export default function CartDrawer({ cart, setCart, user, onClose }) {
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {cart.map((item) => (
             <div key={item.id} className="bg-white/5 border border-white/5 rounded-3xl p-4 flex items-center gap-4">
-              <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 flex items-center justify-center text-indigo-500 font-bold">
-                {item.title ? item.title[0] : 'G'}
+              
+              {/* 📸 MINIATURE COUVERTURE CORRIGÉE (cover_url || image) */}
+              <div className="w-16 h-16 rounded-2xl bg-indigo-600/20 overflow-hidden flex items-center justify-center text-indigo-500 font-bold shrink-0">
+                {(item.cover_url || item.image) ? (
+                  <img 
+                    src={item.cover_url || item.image} 
+                    alt={item.title} 
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  item.title ? item.title[0].toUpperCase() : 'G'
+                )}
               </div>
-              <div className="flex-1">
+
+              <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-bold text-white truncate">{item.title}</h3>
                 <p className="text-indigo-400 text-xs font-black">
                   {parsePrice(item.price).toLocaleString()} FCFA
                 </p>
               </div>
-              <div className="flex items-center gap-2 bg-black/20 rounded-xl p-1">
+
+              <div className="flex items-center gap-2 bg-black/20 rounded-xl p-1 shrink-0">
                 <button onClick={() => updateQuantity(item.id, -1)} className="p-1 hover:text-indigo-400"><Minus size={14}/></button>
                 <span className="text-xs font-bold w-4 text-center">{item.quantity}</span>
                 <button onClick={() => updateQuantity(item.id, 1)} className="p-1 hover:text-indigo-400"><Plus size={14}/></button>
               </div>
-              <button onClick={() => removeItem(item.id)} className="text-slate-500 hover:text-rose-500"><Trash2 size={16}/></button>
+              <button onClick={() => removeItem(item.id)} className="text-slate-500 hover:text-rose-500 shrink-0"><Trash2 size={16}/></button>
             </div>
           ))}
         </div>
