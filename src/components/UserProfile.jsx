@@ -1,217 +1,281 @@
-import React, { useState, useEffect } from "react";
-import { 
-  User, Mail, ArrowLeft, ShoppingBag, Clock, 
-  CheckCircle2, ShieldCheck, Wallet, Flame, Sparkles 
+import React, { useState, useEffect, useRef } from "react";
+import {
+  ArrowLeft, ShoppingBag, Clock, CheckCircle2,
+  ShieldCheck, Gamepad2, TrendingUp, Package,
+  Edit3, Camera, Trophy, Star
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
+
+// Extraire la couleur dominante d'une image via canvas
+function extractColor(imgEl, callback) {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 50;
+    canvas.height = 50;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(imgEl, 0, 0, 50, 50);
+    const data = ctx.getImageData(0, 0, 50, 50).data;
+    let r = 0, g = 0, b = 0, count = 0;
+    for (let i = 0; i < data.length; i += 16) {
+      r += data[i]; g += data[i + 1]; b += data[i + 2]; count++;
+    }
+    r = Math.round(r / count);
+    g = Math.round(g / count);
+    b = Math.round(b / count);
+    callback(`${r}, ${g}, ${b}`);
+  } catch (e) {
+    callback("99, 102, 241"); // fallback indigo
+  }
+}
 
 export default function UserProfile({ user, onBack }) {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [activeTab, setActiveTab] = useState("orders");
+  const [dominantColor, setDominantColor] = useState("99, 102, 241");
+  const [avatar, setAvatar] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  const fileInputRef = useRef();
 
-  // Récupération des commandes de l'utilisateur depuis Supabase
   useEffect(() => {
-    const fetchUserOrders = async () => {
+    const fetchOrders = async () => {
       if (!user?.email) return;
       try {
-        const { data, error } = await supabase
-          .from("orders")
-          .select("*")
+        const { data } = await supabase
+          .from("orders").select("*")
           .eq("customer_email", user.email)
           .order("created_at", { ascending: false });
-
-        if (error) throw error;
         if (data) setOrders(data);
-      } catch (err) {
-        console.error("Erreur récupération commandes:", err.message);
-      } finally {
-        setLoadingOrders(false);
-      }
+      } catch (e) { console.error(e); }
+      finally { setLoadingOrders(false); }
     };
+    fetchOrders();
 
-    fetchUserOrders();
+    // Charger avatar depuis localStorage
+    const saved = localStorage.getItem(`avatar_${user?.email}`);
+    if (saved) setAvatarPreview(saved);
   }, [user]);
 
-  // Calculs dynamiques pour les statistiques du joueur
-  const totalSpent = orders.reduce((sum, order) => sum + (Number(order.total_price) || 0), 0);
-  const totalGames = orders.reduce((sum, order) => {
-    const itemsCount = Array.isArray(order.items) 
-      ? order.items.reduce((acc, item) => acc + (Number(item.quantity) || 1), 0)
-      : 0;
-    return sum + itemsCount;
-  }, 0);
+  const handleAvatarChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      setAvatarPreview(dataUrl);
+      localStorage.setItem(`avatar_${user?.email}`, dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleImgLoad = (e) => {
+    extractColor(e.target, setDominantColor);
+  };
+
+  const totalSpent = orders.reduce((s, o) => s + (Number(o.total_price) || 0), 0);
+  const totalGames = orders.reduce((s, o) =>
+    s + (Array.isArray(o.items) ? o.items.reduce((a, i) => a + (Number(i.quantity) || 1), 0) : 0), 0);
+
+  const getRank = () => {
+    if (totalSpent >= 500000) return { label: "Légende", icon: "👑" };
+    if (totalSpent >= 200000) return { label: "Élite", icon: "💎" };
+    if (totalSpent >= 50000) return { label: "Pro", icon: "⚡" };
+    return { label: "Rookie", icon: "🎮" };
+  };
+  const rank = getRank();
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-200 font-sans p-4 md:p-8 relative overflow-hidden selection:bg-indigo-500/30">
-      
-      {/* 🌌 Arrière-plan avec lueurs diffuses (Glows SaaS) */}
-      <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[120px] pointer-events-none" />
+    <div className="min-h-screen font-sans text-white"
+      style={{ background: `linear-gradient(180deg, rgb(${dominantColor}) 0%, #0a0a0f 35%, #0a0a0f 100%)` }}>
 
-      <div className="max-w-5xl mx-auto relative z-10">
-        
-        {/* ⬅️ Bouton Retour Net & Pro : Appelle directement onBack sans toucher à l'historique du navigateur */}
-        <button 
-          onClick={onBack}
-          className="flex items-center gap-2 text-slate-400 hover:text-white mb-8 group transition-all text-[10px] font-black uppercase tracking-[0.2em] bg-white/5 hover:bg-white/10 px-4 py-2.5 rounded-xl border border-white/5 backdrop-blur-md"
-        >
-          <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" />
-          Retour au catalogue
+      {/* HERO HEADER — Style Spotify */}
+      <div className="relative pt-16 pb-8 px-6 md:px-12"
+        style={{ background: `linear-gradient(180deg, rgba(${dominantColor}, 0.85) 0%, rgba(${dominantColor}, 0.4) 70%, transparent 100%)` }}>
+
+        {/* Back button */}
+        <button onClick={onBack}
+          className="absolute top-6 left-6 p-2 rounded-full bg-black/30 backdrop-blur-sm hover:bg-black/50 transition-colors">
+          <ArrowLeft size={20} className="text-white" />
         </button>
 
-        {/* GRILLE PRINCIPALE */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* COLONNE COMPTE & STATISTIQUES */}
-          <div className="lg:col-span-1 space-y-6">
-            
-            {/* Carte Profil Glassmorphism */}
-            <div className="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-6 text-center relative overflow-hidden shadow-2xl">
-              <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent" />
-              
-              {/* Avatar stylisé */}
-              <div className="relative w-24 h-24 mx-auto mb-4 group">
-                <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-3xl blur-md opacity-40" />
-                <div className="relative w-full h-full rounded-3xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-3xl font-black text-white shadow-inner border border-white/20">
-                  {user?.username?.[0].toUpperCase() || "U"}
-                </div>
-              </div>
+        <div className="flex flex-col md:flex-row items-end md:items-end gap-6 max-w-5xl mx-auto">
 
-              <h2 className="text-2xl font-black uppercase tracking-tighter text-white mb-1">
-                {user?.username}
-              </h2>
-              
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-full text-[9px] font-black uppercase tracking-widest mb-6">
-                <Sparkles size={10} /> Membre Privilège
-              </div>
-
-              {/* Détails du compte */}
-              <div className="space-y-2 text-left border-t border-white/5 pt-6">
-                <div className="bg-black/20 p-3 rounded-2xl border border-white/[0.02] flex items-center gap-3">
-                  <Mail size={16} className="text-slate-500 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-[8px] font-black uppercase tracking-widest text-slate-500">Adresse Email</p>
-                    <p className="text-xs text-slate-300 font-semibold truncate">{user?.email}</p>
-                  </div>
-                </div>
-                
-                <div className="bg-black/20 p-3 rounded-2xl border border-white/[0.02] flex items-center gap-3">
-                  <ShieldCheck size={16} className="text-slate-500 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-[8px] font-black uppercase tracking-widest text-slate-500">Sécurité du compte</p>
-                    <p className="text-xs text-emerald-400 font-bold">Vérifié & Protégé</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Cartes de statistiques rapides */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-white/[0.03] backdrop-blur-xl border border-white/5 rounded-3xl p-5 shadow-xl">
-                <div className="bg-indigo-600/10 w-8 h-8 rounded-xl flex items-center justify-center text-indigo-400 mb-3">
-                  <Flame size={16} />
-                </div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Jeux achetés</p>
-                <p className="text-2xl font-black text-white italic">{totalGames}</p>
-              </div>
-
-              <div className="bg-white/[0.03] backdrop-blur-xl border border-white/5 rounded-3xl p-5 shadow-xl">
-                <div className="bg-purple-600/10 w-8 h-8 rounded-xl flex items-center justify-center text-purple-400 mb-3">
-                  <Wallet size={16} />
-                </div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Total dépensé</p>
-                <p className="text-xl font-black text-white italic truncate">
-                  {totalSpent.toLocaleString()} <span className="text-[9px] text-purple-500 not-italic font-bold">FCFA</span>
-                </p>
-              </div>
-            </div>
-
-          </div>
-
-          {/* COLONNE HISTORIQUE DES COMMANDES */}
-          <div className="lg:col-span-2">
-            <div className="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-6 md:p-8 h-full shadow-2xl flex flex-col">
-              
-              <h3 className="text-xl font-black italic uppercase tracking-tighter text-white mb-6 flex items-center gap-2">
-                <ShoppingBag size={20} className="text-indigo-500" />
-                Historique des <span className="text-indigo-500">Commandes</span>
-              </h3>
-
-              {loadingOrders ? (
-                <div className="flex-1 flex flex-col items-center justify-center py-20 gap-4">
-                  <div className="w-10 h-10 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Chargement de tes achats...</p>
-                </div>
-              ) : orders.length > 0 ? (
-                <div className="space-y-4 flex-1 overflow-y-auto pr-1 max-h-[500px] scrollbar-thin scrollbar-thumb-white/5">
-                  {orders.map((order) => (
-                    <div 
-                      key={order.id} 
-                      className="group bg-black/30 border border-white/5 hover:border-white/10 hover:bg-white/[0.02] transition-all duration-300 rounded-2xl p-5 flex flex-col md:flex-row justify-between md:items-center gap-4 relative overflow-hidden"
-                    >
-                      <div className="absolute left-0 inset-y-0 w-[3px] bg-gradient-to-b from-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-
-                      <div className="space-y-2.5">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className="text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                            ID #{String(order.id).padStart(4, '0')}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1.5">
-                            <Clock size={12} className="text-slate-500" />
-                            {new Date(order.created_at).toLocaleDateString('fr-FR', {
-                              day: 'numeric', month: 'short', year: 'numeric'
-                            })}
-                          </span>
-                        </div>
-
-                        {/* Jeux achetés découpés en badges individuels */}
-                        <div className="flex flex-wrap gap-1.5">
-                          {Array.isArray(order.items) ? (
-                            order.items.map((item, idx) => (
-                              <span key={idx} className="text-xs bg-white/5 px-2.5 py-1 rounded-xl text-slate-300 border border-white/[0.02] font-semibold">
-                                {item.title} <span className="text-indigo-400 font-bold ml-0.5">x{item.quantity || 1}</span>
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-xs text-slate-500">Détails indisponibles</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Prix total et Badge de validation */}
-                      <div className="flex items-center justify-between md:justify-end gap-5 border-t md:border-t-0 border-white/5 pt-3 md:pt-0 shrink-0">
-                        <div className="text-left md:text-right">
-                          <p className="text-[8px] font-black uppercase tracking-widest text-slate-500">Prix Total</p>
-                          <p className="text-lg font-black text-white italic">
-                            {Number(order.total_price).toLocaleString()}{" "}
-                            <span className="text-[10px] text-indigo-500 not-italic font-bold">FCFA</span>
-                          </p>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider shadow-lg">
-                          <CheckCircle2 size={13} />
-                          Validé
-                        </div>
-                      </div>
-
-                    </div>
-                  ))}
-                </div>
+          {/* AVATAR ROND — cliquable pour modifier */}
+          <div className="relative group flex-shrink-0">
+            <div className="w-40 h-40 md:w-52 md:h-52 rounded-full overflow-hidden shadow-2xl ring-4 ring-black/30 cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}>
+              {avatarPreview ? (
+                <img src={avatarPreview} alt="Avatar" crossOrigin="anonymous"
+                  onLoad={handleImgLoad}
+                  className="w-full h-full object-cover" />
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center py-16 text-center border-2 border-dashed border-white/5 rounded-3xl p-6 bg-black/10">
-                  <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-slate-600 mb-4">
-                    <ShoppingBag size={24} />
-                  </div>
-                  <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px] mb-1">Aucun achat enregistré</p>
-                  <p className="text-xs text-slate-600 max-w-xs">Ton historique est vide. Dès que tu achètes un jeu, il apparaîtra ici avec style !</p>
+                <div className="w-full h-full flex items-center justify-center text-6xl font-black"
+                  style={{ background: `rgba(${dominantColor}, 0.3)` }}>
+                  {user?.username?.[0]?.toUpperCase() || "G"}
                 </div>
               )}
-
+              {/* Hover overlay */}
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 rounded-full">
+                <Camera size={28} className="text-white" />
+                <span className="text-xs font-bold text-white">Modifier</span>
+              </div>
             </div>
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
           </div>
 
+          {/* USER INFO */}
+          <div className="flex-1">
+            <p className="text-xs font-black uppercase tracking-widest text-white/70 mb-2">Profil joueur</p>
+            <h1 className="text-5xl md:text-7xl font-black text-white mb-4 leading-none tracking-tighter">
+              {user?.username}
+            </h1>
+            <div className="flex flex-wrap items-center gap-4 text-sm text-white/70">
+              <span className="font-bold">{rank.icon} {rank.label}</span>
+              <span>•</span>
+              <span><strong className="text-white">{orders.length}</strong> commande{orders.length > 1 ? 's' : ''}</span>
+              <span>•</span>
+              <span><strong className="text-white">{totalGames}</strong> jeux</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CONTENT */}
+      <div className="px-6 md:px-12 pb-12 max-w-5xl mx-auto">
+
+        {/* ACTION BUTTONS — Style Spotify */}
+        <div className="flex items-center gap-4 mb-10 mt-2">
+          <button onClick={() => fileInputRef.current?.click()}
+            className="px-6 py-2 rounded-full border border-white/30 text-sm font-bold text-white hover:border-white transition-colors">
+            Modifier le profil
+          </button>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 text-xs font-bold text-white/50 uppercase tracking-widest">
+            <ShieldCheck size={14} className="text-emerald-400" />
+            Vérifié
+          </div>
         </div>
 
+        {/* STATS CARDS */}
+        <div className="grid grid-cols-3 gap-3 mb-10">
+          {[
+            { label: "Commandes", value: orders.length, icon: Package },
+            { label: "Jeux achetés", value: totalGames, icon: Gamepad2 },
+            { label: "Total investi", value: `${totalSpent.toLocaleString()} FCFA`, icon: TrendingUp },
+          ].map((s, i) => (
+            <div key={i} className="rounded-2xl p-4 md:p-5 transition-colors hover:bg-white/10"
+              style={{ background: `rgba(${dominantColor}, 0.12)`, border: `1px solid rgba(${dominantColor}, 0.2)` }}>
+              <s.icon size={18} className="mb-3 text-white/60" />
+              <p className="text-2xl md:text-3xl font-black text-white mb-1">{s.value}</p>
+              <p className="text-xs text-white/50 font-bold uppercase tracking-widest">{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* TABS */}
+        <div className="flex gap-1 mb-6 border-b border-white/10">
+          {[
+            { id: "orders", label: "Commandes" },
+            { id: "achievements", label: "Succès" },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-3 text-sm font-bold transition-all border-b-2 -mb-px ${
+                activeTab === tab.id
+                  ? "text-white border-white"
+                  : "text-white/40 border-transparent hover:text-white/70"
+              }`}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ORDERS — Style liste Spotify */}
+        {activeTab === "orders" && (
+          <div className="space-y-1">
+            {loadingOrders ? (
+              <div className="flex justify-center py-16">
+                <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              </div>
+            ) : orders.length > 0 ? orders.map((order, idx) => (
+              <div key={order.id}
+                className="group flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-white/10 transition-colors cursor-default">
+
+                {/* NUMBER */}
+                <span className="w-6 text-center text-sm font-bold text-white/40 group-hover:hidden flex-shrink-0">
+                  {idx + 1}
+                </span>
+                <ShoppingBag size={14} className="hidden group-hover:block text-white/60 flex-shrink-0" />
+
+                {/* COVER ou icône */}
+                <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-white/10 flex items-center justify-center">
+                  {Array.isArray(order.items) && (order.items[0]?.cover_url || order.items[0]?.image) ? (
+                    <img src={order.items[0].cover_url || order.items[0].image} alt=""
+                      className="w-full h-full object-cover" />
+                  ) : (
+                    <Gamepad2 size={16} className="text-white/40" />
+                  )}
+                </div>
+
+                {/* INFO */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-white truncate">
+                    {Array.isArray(order.items)
+                      ? order.items.map(i => i.title).join(", ")
+                      : "Commande"}
+                  </p>
+                  <p className="text-xs text-white/40 flex items-center gap-1">
+                    <Clock size={10} />
+                    {new Date(order.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
+
+                {/* STATUS */}
+                <div className="hidden md:flex items-center gap-1 text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                  <CheckCircle2 size={12} /> Validé
+                </div>
+
+                {/* PRICE */}
+                <p className="text-sm font-bold text-white/80 flex-shrink-0">
+                  {Number(order.total_price).toLocaleString()} <span className="text-white/40 text-xs">FCFA</span>
+                </p>
+              </div>
+            )) : (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <ShoppingBag size={40} className="text-white/10 mb-4" />
+                <p className="text-white/40 font-bold text-sm">Aucune commande pour l'instant</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ACHIEVEMENTS */}
+        {activeTab === "achievements" && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {[
+              { icon: "🎮", title: "Premier Achat", desc: "Première commande validée", unlocked: orders.length >= 1 },
+              { icon: "🔥", title: "Accro du Gaming", desc: "5 commandes ou plus", unlocked: orders.length >= 5 },
+              { icon: "💎", title: "Gros Dépensier", desc: "+100 000 FCFA dépensés", unlocked: totalSpent >= 100000 },
+              { icon: "⚡", title: "Collectionneur", desc: "10 jeux ou plus", unlocked: totalGames >= 10 },
+              { icon: "👑", title: "Légende ProStore", desc: "+500 000 FCFA dépensés", unlocked: totalSpent >= 500000 },
+              { icon: "🚀", title: "Client Fidèle", desc: "10 commandes ou plus", unlocked: orders.length >= 10 },
+            ].map((a, i) => (
+              <div key={i} className="rounded-2xl p-5 transition-all"
+                style={{
+                  background: a.unlocked ? `rgba(${dominantColor}, 0.15)` : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${a.unlocked ? `rgba(${dominantColor}, 0.3)` : 'rgba(255,255,255,0.06)'}`,
+                  opacity: a.unlocked ? 1 : 0.5
+                }}>
+                <div className="text-3xl mb-3">{a.unlocked ? a.icon : "🔒"}</div>
+                <p className="font-black text-sm text-white mb-1">{a.title}</p>
+                <p className="text-xs text-white/40">{a.desc}</p>
+                {a.unlocked && (
+                  <div className="mt-2 flex items-center gap-1 text-[10px] font-black text-emerald-400 uppercase">
+                    <CheckCircle2 size={10} /> Débloqué
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
