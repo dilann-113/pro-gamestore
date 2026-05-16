@@ -25,7 +25,8 @@ export default function GameDetails({ game, onBack, onAddToCart }) {
         rating: 5
       };
       setComments([comment, ...comments]);
-      setNewComment("");
+      // ✅ FIX : Utilisation du setter pour vider le champ
+      setNewComment(""); 
     }
   };
 
@@ -44,7 +45,7 @@ export default function GameDetails({ game, onBack, onAddToCart }) {
       {/* NAVBAR DÉTAILS */}
       <div className="sticky top-0 z-[160] bg-[#020617]/80 backdrop-blur-md border-b border-white/10 px-8 py-4 flex justify-between items-center">
         <button 
-          onClick={onBack} // <--- Correction ici : onBack au lieu de onClose
+          onClick={onBack}
           className="flex items-center gap-2 text-slate-400 hover:text-white transition-all group font-bold text-sm"
         >
           <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
@@ -70,8 +71,21 @@ export default function GameDetails({ game, onBack, onAddToCart }) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-20">
           <div className="lg:col-span-2">
             <div className={`aspect-video rounded-[3rem] bg-gradient-to-br ${game.gradient || 'from-slate-800 to-slate-900'} relative overflow-hidden shadow-2xl border border-white/10 group mb-8`}>
-                <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-700"></div>
-                <Gamepad2 size={120} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white/10" />
+                
+                {/* ✅ FIX : Bloc Image dynamique avec cover_url */}
+                {game.cover_url ? (
+                  <img 
+                    src={game.cover_url} 
+                    alt={game.title} 
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" 
+                  />
+                ) : (
+                  <>
+                    <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors duration-700"></div>
+                    <Gamepad2 size={120} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white/10" />
+                  </>
+                )}
+
                 <div className="absolute bottom-8 left-8 bg-black/40 backdrop-blur-md px-6 py-3 rounded-2xl flex items-center gap-4 border border-white/10">
                     <div className="flex gap-1 text-yellow-500">
                         {[...Array(5)].map((_, i) => <Star key={i} size={16} fill="currentColor" />)}
