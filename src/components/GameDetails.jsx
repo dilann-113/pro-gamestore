@@ -431,8 +431,17 @@ export default function GameDetails({ game, onBack, onAddToCart, user }) {
 
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${AVATAR_COLORS[colorIdx]} flex items-center justify-center font-black text-sm shadow-lg shrink-0`}>
-                                {(review.username?.[0] || "?").toUpperCase()}
+                              {/* AVATAR AVEC LOGIQUE IMAGE FIX */}
+                              <div className={`w-9 h-9 rounded-xl overflow-hidden bg-gradient-to-br ${AVATAR_COLORS[colorIdx]} flex items-center justify-center font-black text-sm shadow-lg shrink-0`}>
+                                {isMe && localStorage.getItem(`pstore_avatar_${user?.email}`) ? (
+                                  <img 
+                                    src={localStorage.getItem(`pstore_avatar_${user?.email}`)} 
+                                    alt="" 
+                                    className="w-full h-full object-cover" 
+                                  />
+                                ) : (
+                                  (review.username?.[0] || "?").toUpperCase()
+                                )}
                               </div>
                               <div>
                                 <div className="flex items-center gap-2">
@@ -573,46 +582,12 @@ export default function GameDetails({ game, onBack, onAddToCart, user }) {
                 {added ? <><CheckCircle size={14} /> Ajouté au panier</> : <><ShoppingCart size={14} /> Ajouter au panier</>}
               </button>
               <button onClick={() => { onAddToCart(game); onBack(); }}
-                className="w-full py-3 rounded-xl border border-white/[0.08] glass text-[11px] font-black uppercase tracking-widest text-white/50 hover:text-white hover:border-white/20 transition-all flex items-center justify-center gap-2">
-                <Zap size={12} /> Acheter maintenant
+                className="w-full py-3 rounded-xl border border-white/[0.08] glass text-[11px] font-black uppercase tracking-widest text-white/50 hover:text-white hover:border-white/20 transition-all">
+                Acheter directement
               </button>
-              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-indigo-500/5 border border-indigo-500/15">
-                <ShieldCheck size={16} className="text-indigo-400 shrink-0" />
-                <div>
-                  <p className="text-[9px] font-black text-white">Achat sécurisé</p>
-                  <p className="text-[7px] text-white/30 font-bold mt-0.5">Airtel Money · Moov Money</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl glass border border-white/[0.06] space-y-1">
-              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-white/25 mb-3">Informations</p>
-              {[
-                { icon: Package,  label: "Format",     val: "Clé numérique" },
-                { icon: Clock,    label: "Activation",  val: "Immédiate" },
-                { icon: Globe,    label: "Région",      val: "Monde entier" },
-                { icon: Download, label: "Plateforme",  val: "PC / Console" },
-                { icon: Users,    label: "Joueurs",     val: "1–32 joueurs" },
-              ].map(({ icon: Icon, label, val }, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
-                  <div className="flex items-center gap-2">
-                    <Icon size={11} className="text-white/25 shrink-0" />
-                    <span className="text-[9px] font-bold text-white/35 uppercase tracking-wide">{label}</span>
-                  </div>
-                  <span className="text-[9px] font-black text-white">{val}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="p-4 rounded-2xl glass border border-white/[0.06]">
-              <p className="text-[8px] font-black uppercase tracking-[0.2em] text-white/25 mb-3">Tags</p>
-              <div className="flex flex-wrap gap-1.5">
-                {tags.map(t => (
-                  <span key={t} className="px-2.5 py-1 rounded-lg glass border border-white/[0.06] text-[8px] font-bold uppercase tracking-wider text-white/40 hover:text-white/60 hover:border-white/15 transition-colors cursor-pointer">{t}</span>
-                ))}
-              </div>
             </div>
           </div>
+
         </div>
       </div>
     </div>
