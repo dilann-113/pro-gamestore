@@ -28,6 +28,7 @@ function extractColor(imgEl, callback) {
 export default function UserProfile({ user, onBack }) {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
+  const [uploading, setUploading] = useState(false); // État de chargement pour l'upload
   const [activeTab, setActiveTab] = useState("orders");
   const [dominantColor, setDominantColor] = useState("99, 102, 241");
   const [prevColor, setPrevColor] = useState("99, 102, 241");
@@ -38,20 +39,34 @@ export default function UserProfile({ user, onBack }) {
   const containerRef = useRef();
 
   useEffect(() => {
-    const fetchOrders = async () => {
+    const fetchUserDataAndOrders = async () => {
       if (!user?.email) return;
+      
       try {
-        const { data } = await supabase.from("orders").select("*")
+        // 1. Récupération des commandes
+        const { data: ordersData } = await supabase.from("orders").select("*")
           .eq("customer_email", user.email)
           .order("created_at", { ascending: false });
-        if (data) setOrders(data);
-      } catch(e) { console.error(e); }
-      finally { setLoadingOrders(false); }
+        if (ordersData) setOrders(ordersData);
+
+        // 2. Récupération de l'avatar depuis la table profiles de Supabase
+        const { data: profileData, error } = await supabase
+          .from("profiles")
+          .select("avatar_url")
+          .eq("email", user.email)
+          .single();
+
+        if (profileData?.avatar_url) {
+          setAvatarPreview(profileData.avatar_url);
+        }
+      } catch(e) { 
+        console.error("Erreur lors de la récupération des données :", e); 
+      } finally { 
+        setLoadingOrders(false); 
+      }
     };
-    fetchOrders();
-    // CORRECTION : Utilisation de la clé harmonisée pstore_avatar_
-    const saved = localStorage.getItem(`pstore_avatar_${user?.email}`);
-    if (saved) setAvatarPreview(saved);
+
+    fetchUserDataAndOrders();
   }, [user]);
 
   useEffect(() => {
@@ -70,20 +85,53 @@ export default function UserProfile({ user, onBack }) {
     setTimeout(() => setFadeTrigger(true), 50);
   };
 
-  const handleAvatarChange = (e) => {
+  const handleAvatarChange = async (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const dataUrl = ev.target.result;
-      setAvatarPreview(dataUrl);
-      // CORRECTION : Sauvegarde avec la clé pstore_avatar_
-      localStorage.setItem(`pstore_avatar_${user?.email}`, dataUrl);
+    if (!file || !user?.email) return;
+
+    try {
+      setUploading(true);
+
+      // Génération d'un nom de fichier unique pour éviter les conflits de cache
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.email.replace(/[@.]/g, '_')}-avatar-${Date.now()}.${fileExt}`;
+      const filePath = `user_avatars/${fileName}`;
+
+      // 1. Envoi du fichier vers le bucket 'avatars' de Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // 2. Récupération de l'URL publique de l'image stockée
+      const { data: { publicUrl } } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(filePath);
+
+      // 3. Mise à jour de la colonne avatar_url dans la table profiles
+      const { error: updateError } = await supabase
+        .from("profiles")
+        .update({ avatar_url: publicUrl })
+        .eq("email", user.email);
+
+      if (updateError) throw updateError;
+
+      // 4. Mise à jour locale de l'état d'affichage de l'avatar
+      setAvatarPreview(publicUrl);
+
+      // Extraction de la couleur dominante à partir de la nouvelle URL
       const img = new Image();
-      img.src = dataUrl;
+      img.src = publicUrl;
+      img.crossOrigin = "anonymous";
       img.onload = () => extractColor(img, updateDominantColor);
-    };
-    reader.readAsDataURL(file);
+
+    } catch (error) {
+      console.error("Erreur lors de la mise à jour de l'avatar :", error.message);
+      alert("Impossible de mettre à jour l'avatar. Vérifiez la configuration de Supabase.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleImgLoad = (e) => extractColor(e.target, updateDominantColor);
@@ -152,28 +200,37 @@ export default function UserProfile({ user, onBack }) {
           <div className="flex flex-col md:flex-row items-center md:items-end gap-10">
 
             {/* AVATAR */}
-            <div className="relative group flex-shrink-0 cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+            <div className="relative group flex-shrink-0 cursor-pointer" onClick={() => !uploading && fileInputRef.current?.click()}>
               {/* Halo animé */}
               <div className="absolute -inset-3 rounded-full animate-pulse opacity-30 blur-xl transition-all duration-1000"
                 style={{ background: `rgb(${dominantColor})` }} />
               <div className="absolute -inset-1 rounded-full opacity-60"
                 style={{ background: `conic-gradient(from 0deg, rgb(${dominantColor}), transparent, rgb(${dominantColor}))` }} />
 
-              <div className="relative w-44 h-44 md:w-52 md:h-52 rounded-full overflow-hidden border-2 border-white/10 shadow-[0_30px_60px_-10px_rgba(0,0,0,0.9)]">
-                {avatarPreview
-                  ? <img src={avatarPreview} alt="Avatar" crossOrigin="anonymous" onLoad={handleImgLoad}
+              <div className="relative w-44 h-44 md:w-52 md:h-52 rounded-full overflow-hidden border-2 border-white/10 shadow-[0_30px_60px_-10px_rgba(0,0,0,0.9)] bg-black">
+                {uploading ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+                    <div className="w-6 h-6 border-2 border-t-transparent border-white rounded-full animate-spin" />
+                    <span className="text-[9px] uppercase font-black tracking-widest text-white/50">Envoi...</span>
+                  </div>
+                ) : avatarPreview ? (
+                  <img src={avatarPreview} alt="Avatar" crossOrigin="anonymous" onLoad={handleImgLoad}
                       className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
-                  : <div className="w-full h-full flex items-center justify-center text-7xl font-black"
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-7xl font-black"
                       style={{ background: `linear-gradient(135deg, rgba(${dominantColor},0.3), rgba(0,0,0,0.6))` }}>
-                      {user?.username?.[0]?.toUpperCase() || "U"}
-                    </div>}
+                    {user?.username?.[0]?.toUpperCase() || "U"}
+                  </div>
+                )}
 
                 {/* Overlay édition */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300"
-                  style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}>
-                  <Camera size={22} className="text-white" />
-                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white">Modifier</span>
-                </div>
+                {!uploading && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300"
+                    style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}>
+                    <Camera size={22} className="text-white" />
+                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white">Modifier</span>
+                  </div>
+                )}
               </div>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
             </div>
@@ -275,7 +332,7 @@ export default function UserProfile({ user, onBack }) {
 
                   {orders.map((order, idx) => (
                     <div key={order.id}
-                      className="group grid grid-cols-12 items-center px-6 py-4 border-b border-white/[0.03] hover:bg-white/[0.03] transition-all duration-200 cursor-default"
+                      className="group grid grid-cols-12 items-center px-6 py-4 border-b border-white/40 hover:bg-white/[0.03] transition-all duration-200 cursor-default"
                       style={{ animationDelay: `${idx * 50}ms` }}>
 
                       <div className="col-span-1">
