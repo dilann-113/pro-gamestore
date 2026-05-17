@@ -39,16 +39,18 @@ export default function App() {
   const searchRef = useRef();
   const catBarRef = useRef();
 
-  // ── INIT SESSION & RECENTS ──
+  // Synchronisation de l'avatar au chargement initial et lors des changements d'état utilisateur
   useEffect(() => {
     const savedUser = localStorage.getItem("prostore_user");
     if (savedUser) {
       try {
-        const p = JSON.parse(savedUser);
-        setUser(p);
+        const parsedUser = JSON.parse(savedUser);
+        setUser(parsedUser);
         setIsAuthenticated(true);
-        const av = localStorage.getItem(`avatar_${p.email}`);
-        if (av) setAvatarPreview(av);
+        
+        // Utilisation de la clé d'avatar harmonisée
+        const savedAvatar = parsedUser.avatar_url || localStorage.getItem(`prostore_avatar_${parsedUser.email}`);
+        if (savedAvatar) setAvatarPreview(savedAvatar);
       } catch { 
         localStorage.removeItem("prostore_user"); 
       }
@@ -59,13 +61,13 @@ export default function App() {
     }
   }, []);
 
-  // ── SCROLL DETECTION (THROTTLED PERFS) ──
+  // Détection du défilement pour animer la navbar
   useEffect(() => {
     const el = mainRef.current;
     if (!el) return;
     let ticking = false;
 
-    const fn = () => {
+    const handleScroll = () => {
       if (!ticking) {
         window.requestAnimationFrame(() => {
           setScrolled(el.scrollTop > 40);
@@ -75,33 +77,36 @@ export default function App() {
       }
     };
 
-    el.addEventListener("scroll", fn, { passive: true });
-    return () => el.removeEventListener("scroll", fn);
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
   }, [isAuthenticated]);
 
-  // ── HERO AUTO-ROTATE (CROSSFADE OPTIMIZATIONS) ──
+  // Rotation automatique du Hero Banner
   useEffect(() => {
     if (games.length < 2 || searchTerm || activeCategory !== "Tous") return;
-    const t = setInterval(() => {
+    const interval = setInterval(() => {
       setHeroTransition(false);
       setTimeout(() => {
-        setHeroIndex(p => (p + 1) % Math.min(games.length, 5));
+        setHeroIndex(prev => (prev + 1) % Math.min(games.length, 5));
         setHeroTransition(true);
       }, 300);
     }, 8000);
-    return () => clearInterval(t);
+    return () => clearInterval(interval);
   }, [games, searchTerm, activeCategory]);
 
-  // ── AUTH HANDLERS ──
+  // Gestion des connexions réussies
   const handleLoginSuccess = useCallback((userData) => {
     setUser(userData);
     setIsAuthenticated(true);
     localStorage.setItem("prostore_user", JSON.stringify(userData));
-    const av = localStorage.getItem(`avatar_${userData.email}`);
-    if (av) setAvatarPreview(av);
+    
+    const savedAvatar = userData.avatar_url || localStorage.getItem(`prostore_avatar_${userData.email}`);
+    if (savedAvatar) setAvatarPreview(savedAvatar);
+    
     toast.success(`Content de vous revoir, ${userData.username} !`);
   }, []);
 
+  // Déconnexion de l'utilisateur
   const handleLogout = useCallback(() => {
     localStorage.removeItem("prostore_user");
     setIsAuthenticated(false);
@@ -112,7 +117,7 @@ export default function App() {
     toast.error("Déconnexion réussie");
   }, []);
 
-  // ── SUPABASE DATA FETCH ──
+  // Chargement des jeux depuis Supabase
   const loadGames = useCallback(async () => {
     setLoading(true);
     try {
@@ -129,15 +134,17 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => { if (isAuthenticated) loadGames(); }, [isAuthenticated, loadGames]);
+  useEffect(() => { 
+    if (isAuthenticated) loadGames(); 
+  }, [isAuthenticated, loadGames]);
 
-  // ── PANIER + FEEDBACK VISUEL AJOUT ──
+  // Ajout au panier avec animation de validation
   const addToCart = useCallback((game, e) => {
     if (e) e.stopPropagation();
     setCart(prev => {
-      const exists = prev.find(i => i.id === game.id);
+      const exists = prev.find(item => item.id === game.id);
       return exists
-        ? prev.map(i => i.id === game.id ? { ...i, quantity: i.quantity + 1 } : i)
+        ? prev.map(item => item.id === game.id ? { ...item, quantity: item.quantity + 1 } : item)
         : [...prev, { ...game, quantity: 1 }];
     });
     setAddedIds(prev => ({ ...prev, [game.id]: true }));
@@ -145,7 +152,7 @@ export default function App() {
     toast.success(`${game.title} ajouté au panier`, { icon: "🎮" });
   }, []);
 
-  // ── HISTORIQUE DE CONSULTATION ──
+  // Suivi de l'historique des jeux consultés
   const trackView = useCallback((game) => {
     setSelectedGame(game);
     setRecentViews(prev => {
@@ -155,32 +162,32 @@ export default function App() {
     });
   }, []);
 
-  // ── FILTRES & COMPUTATIONS MEMOÏSÉES ──
+  // Filtres et Tris mémoïsés
   const categories = useMemo(() => {
     const cats = games.map(g => g.category).filter(Boolean);
     return ["Tous", ...new Set(cats)];
   }, [games]);
 
   const filteredGames = useMemo(() => {
-    let r = games.filter(g => {
-      const ms = (g.title || "").toLowerCase().includes(searchTerm.toLowerCase());
-      const mc = activeCategory === "Tous" || g.category === activeCategory;
-      return ms && mc;
+    let result = games.filter(g => {
+      const matchSearch = (g.title || "").toLowerCase().includes(searchTerm.toLowerCase());
+      const matchCategory = activeCategory === "Tous" || g.category === activeCategory;
+      return matchSearch && matchCategory;
     });
-    if (sortBy === "price-asc") r = [...r].sort((a, b) => parsePrice(a.price) - parsePrice(b.price));
-    else if (sortBy === "price-desc") r = [...r].sort((a, b) => parsePrice(b.price) - parsePrice(a.price));
-    else if (sortBy === "news") r = [...r].sort((a, b) => b.id - a.id);
-    return r;
+    if (sortBy === "price-asc") result = [...result].sort((a, b) => parsePrice(a.price) - parsePrice(b.price));
+    else if (sortBy === "price-desc") result = [...result].sort((a, b) => parsePrice(b.price) - parsePrice(a.price));
+    else if (sortBy === "news") result = [...result].sort((a, b) => b.id - a.id);
+    return result;
   }, [searchTerm, activeCategory, games, sortBy]);
 
-  const cartCount = cart.reduce((a, b) => a + b.quantity, 0);
+  const cartCount = cart.reduce((acc, item) => acc + item.quantity, 0);
   const featuredGames = useMemo(() => games.slice(0, 5), [games]);
   const featuredGame = featuredGames[heroIndex] || games[0];
   const showHero = !searchTerm && activeCategory === "Tous" && featuredGame;
 
-  // ── RACCOURCIS CLAVIERS GLOBATION ──
+  // Raccourcis claviers globaux
   useEffect(() => {
-    const fn = (e) => {
+    const handleKeyDown = (e) => {
       if (e.key === "/" && document.activeElement !== searchRef.current) {
         e.preventDefault();
         searchRef.current?.focus();
@@ -190,11 +197,11 @@ export default function App() {
         searchRef.current?.blur();
       }
     };
-    window.addEventListener("keydown", fn);
-    return () => window.removeEventListener("keydown", fn);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // ── DEPLACEMENT DU SCROLL CATEGORIES CONTROLE ──
+  // Alignement dynamique de la catégorie active
   useEffect(() => {
     const bar = catBarRef.current;
     if (!bar) return;
@@ -213,11 +220,10 @@ export default function App() {
         duration: 2200,
       }} />
 
-      {/* ══ NAVBAR COMPACTE ET DYNAMIQUE ══ */}
+      {/* NAVBAR */}
       <nav className={`sticky top-0 z-50 transition-all duration-300 ${scrolled ? "border-b border-white/5 bg-[#030307]/80 shadow-xl shadow-black/40 backdrop-blur-xl" : "bg-transparent"}`}>
         <div className="max-w-screen-xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
 
-          {/* LOGO */}
           <button onClick={() => window.location.reload()} className="flex items-center gap-3 shrink-0 group">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-600/20 group-hover:scale-105 transition-all">
               <Gamepad2 size={18} className="text-white" />
@@ -227,7 +233,7 @@ export default function App() {
             </span>
           </button>
 
-          {/* BARRE DE RECHERCHE DYNAMIQUE */}
+          {/* RECHERCHE */}
           <div className={`relative flex-1 max-w-sm transition-all duration-300 ${searchFocused ? "max-w-md" : ""}`}>
             <Search size={15} className={`absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${searchFocused ? "text-indigo-400" : "text-slate-500"}`} />
             <input
@@ -249,7 +255,7 @@ export default function App() {
             )}
           </div>
 
-          {/* MENU UTILISATEUR & PANIER */}
+          {/* ACTIONS */}
           <div className="flex items-center gap-2">
             <button onClick={() => setIsProfileOpen(true)}
               className="flex items-center gap-2.5 px-3 py-1.5 rounded-2xl border border-white/[0.05] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 transition-all group">
@@ -285,7 +291,7 @@ export default function App() {
         </div>
       </nav>
 
-      {/* ══ INTERFACE VIVANTE : HERO BANNER ══ */}
+      {/* HERO BANNER */}
       {showHero && (
         <div className="px-6 pt-2 pb-8 max-w-screen-xl mx-auto animate-fade-in">
           <div className="relative rounded-[2rem] overflow-hidden cursor-pointer group shadow-2xl bg-[#090911] border border-white/[0.04]" 
@@ -304,7 +310,7 @@ export default function App() {
             <div className="absolute inset-0 bg-gradient-to-t from-[#030307] via-[#030307]/30 to-transparent" />
             <div className="absolute inset-0 bg-gradient-to-r from-[#030307]/80 via-transparent to-transparent" />
 
-            {/* SYSTÈME DE NAVIGATION (SLIDER COMPASS) */}
+            {/* CONTROLES SLIDER */}
             <div className="absolute top-6 right-6 flex gap-2 z-10 bg-black/20 backdrop-blur-md p-1.5 rounded-full border border-white/5">
               {featuredGames.map((_, i) => (
                 <button key={i} onClick={e => { e.stopPropagation(); setHeroIndex(i); }}
@@ -313,11 +319,11 @@ export default function App() {
             </div>
 
             <button className="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/30 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-indigo-600 hover:border-transparent text-white z-10"
-              onClick={e => { e.stopPropagation(); setHeroIndex(p => (p - 1 + featuredGames.length) % featuredGames.length); }}>
+              onClick={e => { e.stopPropagation(); setHeroIndex(prev => (prev - 1 + featuredGames.length) % featuredGames.length); }}>
               <ChevronLeft size={18} />
             </button>
             <button className="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/30 backdrop-blur-md border border-white/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-indigo-600 hover:border-transparent text-white z-10"
-              onClick={e => { e.stopPropagation(); setHeroIndex(p => (p + 1) % featuredGames.length); }}>
+              onClick={e => { e.stopPropagation(); setHeroIndex(prev => (prev + 1) % featuredGames.length); }}>
               <ChevronRight size={18} />
             </button>
 
@@ -345,9 +351,8 @@ export default function App() {
         </div>
       )}
 
-      {/* ══ MAIN GRID CONTENANT LES PRODUITS ══ */}
+      {/* CATALOGUE GRID */}
       <main className="max-w-screen-xl mx-auto px-6 pb-24">
-
         {!searchTerm && (
           <div className="mb-8">
             <div className="flex items-center justify-between mb-4">
@@ -363,7 +368,7 @@ export default function App() {
                 </h2>
               </div>
 
-              {/* ACTION TRIER */}
+              {/* FILTRES & TRI */}
               <div className="relative">
                 <button onClick={() => setShowFilters(!showFilters)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-2xl border text-xs font-bold transition-all ${showFilters || sortBy !== "default" ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-400" : "bg-white/[0.02] border-white/[0.06] text-slate-400 hover:text-white"}`}>
@@ -390,7 +395,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* FILTRE HORIZONTAL DES CATEGORIES */}
+            {/* BARRE CATEGORIES */}
             <div ref={catBarRef} className="flex gap-2 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory">
               {categories.map(cat => (
                 <button key={cat} data-active={activeCategory === cat} onClick={() => setActiveCategory(cat)}
@@ -413,7 +418,7 @@ export default function App() {
           </div>
         )}
 
-        {/* COMPOSANT DE LA GRILLE DES JEUX */}
+        {/* GRILLE PRODUITS */}
         {filteredGames.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4">
             {filteredGames.map((game) => {
@@ -432,7 +437,6 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* ACTION RAPIDE D'ACHAT */}
                     <button onClick={e => addToCart(game, e)}
                       className={`absolute bottom-3 right-3 w-9 h-9 rounded-xl flex items-center justify-center shadow-2xl transition-all duration-300 transform active:scale-90 opacity-100 sm:opacity-0 group-hover:opacity-100 translate-y-0 sm:translate-y-2 group-hover:translate-y-0 ${isAdded ? "bg-emerald-500 text-white scale-100" : "bg-indigo-600 text-white hover:bg-white hover:text-black"}`}>
                       {isAdded ? <span className="text-xs font-black">✓</span> : <Plus size={15} />}
@@ -474,7 +478,7 @@ export default function App() {
           </div>
         )}
 
-        {/* COMPOSANT HISTORIQUE : CONSERVE LES DERNIERS AVATARS COVERS */}
+        {/* HISTORIQUE RECENTS */}
         {recentViews.length > 0 && !searchTerm && (
           <div className="mt-16 border-t border-white/[0.03] pt-8">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4">
