@@ -81,7 +81,7 @@ export default function GameDetails({ game, onBack, onAddToCart, user }) {
   const [added, setAdded]               = useState(false);
   const [liked, setLiked]               = useState(false);
   const [scrollY, setScrollY]           = useState(0);
-  const containerRef                     = useRef();
+  const containerRef                    = useRef();
 
   const reqs = getSystemReqs(game.category);
   const tags = TAGS[game.category] || ["Jeu vidéo", "Action", "Solo"];
@@ -123,14 +123,12 @@ export default function GameDetails({ game, onBack, onAddToCart, user }) {
     setSubmitting(true);
     try {
       if (myReview) {
-        // Mise à jour
         await supabase.from('reviews').update({
           rating: newRating,
           text: newText.trim(),
           updated_at: new Date().toISOString()
         }).eq('id', myReview.id);
       } else {
-        // Nouveau
         await supabase.from('reviews').insert([{
           game_id: game.id,
           user_email: user.email,
@@ -431,7 +429,6 @@ export default function GameDetails({ game, onBack, onAddToCart, user }) {
 
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex items-center gap-3">
-                              {/* AVATAR AVEC LOGIQUE IMAGE FIX */}
                               <div className={`w-9 h-9 rounded-xl overflow-hidden bg-gradient-to-br ${AVATAR_COLORS[colorIdx]} flex items-center justify-center font-black text-sm shadow-lg shrink-0`}>
                                 {isMe && localStorage.getItem(`pstore_avatar_${user?.email}`) ? (
                                   <img 
@@ -456,7 +453,6 @@ export default function GameDetails({ game, onBack, onAddToCart, user }) {
                             </div>
 
                             <div className="flex items-center gap-2">
-                              {/* ÉTOILES */}
                               {!isEditing && (
                                 <div className="flex gap-0.5">
                                   {[1,2,3,4,5].map(s => (
@@ -465,7 +461,6 @@ export default function GameDetails({ game, onBack, onAddToCart, user }) {
                                 </div>
                               )}
 
-                              {/* ACTIONS SI C'EST MOI */}
                               {isMe && !isEditing && (
                                 <div className="flex gap-1 ml-1">
                                   <button onClick={() => startEdit(review)}
@@ -481,7 +476,6 @@ export default function GameDetails({ game, onBack, onAddToCart, user }) {
                             </div>
                           </div>
 
-                          {/* MODE ÉDITION */}
                           {isEditing ? (
                             <div className="space-y-3 pl-12">
                               <div className="flex items-center gap-2">
@@ -576,14 +570,10 @@ export default function GameDetails({ game, onBack, onAddToCart, user }) {
                 <p className="text-[8px] text-indigo-400 font-bold mt-1">✓ En stock — Livraison immédiate</p>
               </div>
               <button onClick={handleAddToCart}
-                className={`relative overflow-hidden w-full py-3.5 rounded-xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all duration-300 shadow-xl ${
-                  added ? "bg-indigo-500 text-white shadow-indigo-500/25" : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/25 shimmer-fx"
+                className={`relative overflow-hidden w-full py-3.5 rounded-xl font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all duration-300 ${
+                  added ? "bg-emerald-500 text-white" : "bg-indigo-600 hover:bg-indigo-500 text-white"
                 }`}>
-                {added ? <><CheckCircle size={14} /> Ajouté au panier</> : <><ShoppingCart size={14} /> Ajouter au panier</>}
-              </button>
-              <button onClick={() => { onAddToCart(game); onBack(); }}
-                className="w-full py-3 rounded-xl border border-white/[0.08] glass text-[11px] font-black uppercase tracking-widest text-white/50 hover:text-white hover:border-white/20 transition-all">
-                Acheter directement
+                {added ? <><CheckCircle size={12} /> Ajouté au panier</> : <><ShoppingCart size={12} /> Ajouter au panier</>}
               </button>
             </div>
           </div>
