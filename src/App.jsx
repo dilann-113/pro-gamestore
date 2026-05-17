@@ -503,7 +503,7 @@ export default function App() {
       </main>
 
       {isCartOpen && <CartDrawer cart={cart} setCart={setCart} user={user} onClose={() => setIsCartOpen(false)} />}
-      {selectedGame && <GameDetails game={selectedGame} onBack={() => setSelectedGame(null)} onAddToCart={addToCart} />}
+      {selectedGame && <GameDetails game={selectedGame} user={user} onBack={() => setSelectedGame(null)} onAddToCart={addToCart} />}
     </div>
   );
 }
