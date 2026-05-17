@@ -49,7 +49,8 @@ export default function UserProfile({ user, onBack }) {
       finally { setLoadingOrders(false); }
     };
     fetchOrders();
-    const saved = localStorage.getItem(`avatar_${user?.email}`);
+    // CORRECTION : Utilisation de la clé harmonisée pstore_avatar_
+    const saved = localStorage.getItem(`pstore_avatar_${user?.email}`);
     if (saved) setAvatarPreview(saved);
   }, [user]);
 
@@ -76,7 +77,8 @@ export default function UserProfile({ user, onBack }) {
     reader.onload = (ev) => {
       const dataUrl = ev.target.result;
       setAvatarPreview(dataUrl);
-      localStorage.setItem(`avatar_${user?.email}`, dataUrl);
+      // CORRECTION : Sauvegarde avec la clé pstore_avatar_
+      localStorage.setItem(`pstore_avatar_${user?.email}`, dataUrl);
       const img = new Image();
       img.src = dataUrl;
       img.onload = () => extractColor(img, updateDominantColor);

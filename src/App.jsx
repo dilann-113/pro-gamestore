@@ -39,7 +39,7 @@ export default function App() {
   const searchRef = useRef();
   const catBarRef = useRef();
 
-  // Synchronisation de l'avatar au chargement initial et lors des changements d'état utilisateur
+  // ── INIT SESSION & CORRECTION CLÉ AVATAR ──
   useEffect(() => {
     const savedUser = localStorage.getItem("prostore_user");
     if (savedUser) {
@@ -48,8 +48,8 @@ export default function App() {
         setUser(parsedUser);
         setIsAuthenticated(true);
         
-        // Utilisation de la clé d'avatar harmonisée
-        const savedAvatar = parsedUser.avatar_url || localStorage.getItem(`prostore_avatar_${parsedUser.email}`);
+        // Correction : Clé pstore_avatar_ harmonisée au chargement initial
+        const savedAvatar = localStorage.getItem(`pstore_avatar_${parsedUser.email}`);
         if (savedAvatar) setAvatarPreview(savedAvatar);
       } catch { 
         localStorage.removeItem("prostore_user"); 
@@ -61,7 +61,7 @@ export default function App() {
     }
   }, []);
 
-  // Détection du défilement pour animer la navbar
+  // ── SCROLL DETECTION ──
   useEffect(() => {
     const el = mainRef.current;
     if (!el) return;
@@ -81,7 +81,7 @@ export default function App() {
     return () => el.removeEventListener("scroll", handleScroll);
   }, [isAuthenticated]);
 
-  // Rotation automatique du Hero Banner
+  // ── HERO AUTO-ROTATE ──
   useEffect(() => {
     if (games.length < 2 || searchTerm || activeCategory !== "Tous") return;
     const interval = setInterval(() => {
@@ -94,19 +94,19 @@ export default function App() {
     return () => clearInterval(interval);
   }, [games, searchTerm, activeCategory]);
 
-  // Gestion des connexions réussies
+  // ── AUTH HANDLERS CORRIGÉS ──
   const handleLoginSuccess = useCallback((userData) => {
     setUser(userData);
     setIsAuthenticated(true);
     localStorage.setItem("prostore_user", JSON.stringify(userData));
     
-    const savedAvatar = userData.avatar_url || localStorage.getItem(`prostore_avatar_${userData.email}`);
+    // Correction : Utilisation stricte de pstore_avatar_ à la connexion
+    const savedAvatar = localStorage.getItem(`pstore_avatar_${userData.email}`);
     if (savedAvatar) setAvatarPreview(savedAvatar);
     
     toast.success(`Content de vous revoir, ${userData.username} !`);
   }, []);
 
-  // Déconnexion de l'utilisateur
   const handleLogout = useCallback(() => {
     localStorage.removeItem("prostore_user");
     setIsAuthenticated(false);
@@ -117,7 +117,7 @@ export default function App() {
     toast.error("Déconnexion réussie");
   }, []);
 
-  // Chargement des jeux depuis Supabase
+  // ── SUPABASE DATA FETCH ──
   const loadGames = useCallback(async () => {
     setLoading(true);
     try {
@@ -138,7 +138,7 @@ export default function App() {
     if (isAuthenticated) loadGames(); 
   }, [isAuthenticated, loadGames]);
 
-  // Ajout au panier avec animation de validation
+  // ── PANIER ──
   const addToCart = useCallback((game, e) => {
     if (e) e.stopPropagation();
     setCart(prev => {
@@ -152,7 +152,7 @@ export default function App() {
     toast.success(`${game.title} ajouté au panier`, { icon: "🎮" });
   }, []);
 
-  // Suivi de l'historique des jeux consultés
+  // ── HISTORIQUE DE CONSULTATION ──
   const trackView = useCallback((game) => {
     setSelectedGame(game);
     setRecentViews(prev => {
@@ -162,7 +162,7 @@ export default function App() {
     });
   }, []);
 
-  // Filtres et Tris mémoïsés
+  // ── FILTRES & COMPUTATIONS ──
   const categories = useMemo(() => {
     const cats = games.map(g => g.category).filter(Boolean);
     return ["Tous", ...new Set(cats)];
@@ -185,7 +185,7 @@ export default function App() {
   const featuredGame = featuredGames[heroIndex] || games[0];
   const showHero = !searchTerm && activeCategory === "Tous" && featuredGame;
 
-  // Raccourcis claviers globaux
+  // ── RACCOURCIS CLAVIERS ──
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "/" && document.activeElement !== searchRef.current) {
@@ -201,7 +201,7 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Alignement dynamique de la catégorie active
+  // ── AUTO-SCROLL BARRE CATEGORIES ──
   useEffect(() => {
     const bar = catBarRef.current;
     if (!bar) return;
@@ -224,6 +224,7 @@ export default function App() {
       <nav className={`sticky top-0 z-50 transition-all duration-300 ${scrolled ? "border-b border-white/5 bg-[#030307]/80 shadow-xl shadow-black/40 backdrop-blur-xl" : "bg-transparent"}`}>
         <div className="max-w-screen-xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
 
+          {/* LOGO */}
           <button onClick={() => window.location.reload()} className="flex items-center gap-3 shrink-0 group">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-600/20 group-hover:scale-105 transition-all">
               <Gamepad2 size={18} className="text-white" />
@@ -233,7 +234,7 @@ export default function App() {
             </span>
           </button>
 
-          {/* RECHERCHE */}
+          {/* BARRE DE RECHERCHE */}
           <div className={`relative flex-1 max-w-sm transition-all duration-300 ${searchFocused ? "max-w-md" : ""}`}>
             <Search size={15} className={`absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${searchFocused ? "text-indigo-400" : "text-slate-500"}`} />
             <input
@@ -255,7 +256,7 @@ export default function App() {
             )}
           </div>
 
-          {/* ACTIONS */}
+          {/* MENUS DROITE */}
           <div className="flex items-center gap-2">
             <button onClick={() => setIsProfileOpen(true)}
               className="flex items-center gap-2.5 px-3 py-1.5 rounded-2xl border border-white/[0.05] bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10 transition-all group">
@@ -300,8 +301,7 @@ export default function App() {
 
             <div className={`absolute inset-0 transition-all duration-700 ease-in-out scale-100 group-hover:scale-[1.02] ${heroTransition ? "opacity-100 filter blur-0" : "opacity-40 filter blur-md"}`}>
               {(featuredGame.cover_url || featuredGame.image) ? (
-                <img key={featuredGame.id} src={featuredGame.cover_url || featuredGame.image} alt={featuredGame.title}
-                  className="w-full h-full object-cover" />
+                <img key={featuredGame.id} src={featuredGame.cover_url || featuredGame.image} alt={featuredGame.title} className="w-full h-full object-cover" />
               ) : (
                 <div className={`w-full h-full bg-gradient-to-br ${featuredGame.gradient || 'from-indigo-900 to-slate-950'}`} />
               )}
@@ -310,7 +310,7 @@ export default function App() {
             <div className="absolute inset-0 bg-gradient-to-t from-[#030307] via-[#030307]/30 to-transparent" />
             <div className="absolute inset-0 bg-gradient-to-r from-[#030307]/80 via-transparent to-transparent" />
 
-            {/* CONTROLES SLIDER */}
+            {/* SLIDER DOTS */}
             <div className="absolute top-6 right-6 flex gap-2 z-10 bg-black/20 backdrop-blur-md p-1.5 rounded-full border border-white/5">
               {featuredGames.map((_, i) => (
                 <button key={i} onClick={e => { e.stopPropagation(); setHeroIndex(i); }}
@@ -351,7 +351,7 @@ export default function App() {
         </div>
       )}
 
-      {/* CATALOGUE GRID */}
+      {/* CONTENU PRINCIPAL */}
       <main className="max-w-screen-xl mx-auto px-6 pb-24">
         {!searchTerm && (
           <div className="mb-8">
@@ -368,7 +368,7 @@ export default function App() {
                 </h2>
               </div>
 
-              {/* FILTRES & TRI */}
+              {/* ACTION TRIER */}
               <div className="relative">
                 <button onClick={() => setShowFilters(!showFilters)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-2xl border text-xs font-bold transition-all ${showFilters || sortBy !== "default" ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-400" : "bg-white/[0.02] border-white/[0.06] text-slate-400 hover:text-white"}`}>
@@ -395,7 +395,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* BARRE CATEGORIES */}
+            {/* FILTRES CATEGORIES */}
             <div ref={catBarRef} className="flex gap-2 overflow-x-auto pb-2 scrollbar-none snap-x snap-mandatory">
               {categories.map(cat => (
                 <button key={cat} data-active={activeCategory === cat} onClick={() => setActiveCategory(cat)}
@@ -429,8 +429,7 @@ export default function App() {
 
                   <div className="relative overflow-hidden bg-[#131322] aspect-[4/3] w-full">
                     {(game.cover_url || game.image) ? (
-                      <img src={game.cover_url || game.image} alt={game.title} loading="lazy"
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                      <img src={game.cover_url || game.image} alt={game.title} loading="lazy" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                     ) : (
                       <div className={`w-full h-full bg-gradient-to-br ${game.gradient || 'from-indigo-600/10 to-purple-600/10'} flex items-center justify-center`}>
                         <Gamepad2 size={24} className="text-slate-700" />
@@ -478,7 +477,7 @@ export default function App() {
           </div>
         )}
 
-        {/* HISTORIQUE RECENTS */}
+        {/* RECENTLY VIEWED */}
         {recentViews.length > 0 && !searchTerm && (
           <div className="mt-16 border-t border-white/[0.03] pt-8">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-4">
@@ -507,6 +506,8 @@ export default function App() {
       </main>
 
       {isCartOpen && <CartDrawer cart={cart} setCart={setCart} user={user} onClose={() => setIsCartOpen(false)} />}
+      
+      {/* Correction essentielle : user={user} transmis pour gérer l'identité des commentaires */}
       {selectedGame && <GameDetails game={selectedGame} user={user} onBack={() => setSelectedGame(null)} onAddToCart={addToCart} />}
     </div>
   );
